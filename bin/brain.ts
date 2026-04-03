@@ -13,9 +13,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain list               List unprocessed
        brain stats              Vault stats
        brain search <query>     Search vault
+       brain compile            Compile raw → wiki
        brain config [path]      View/set vault path`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -56,10 +57,12 @@ async function main(): Promise<void> {
       stats: () => import("../src/commands/stats").then((m) => m.run),
       config: () => import("../src/commands/config").then((m) => m.run),
       search: () => import("../src/commands/search").then((m) => m.run),
+      compile: () => import("../src/commands/compile").then((m) => m.run),
     };
 
     const handler = await commands[subcommand]!();
-    await handler(subArgs, config);
+    // compile needs raw args (flags like --dry-run, --model)
+    await handler(subcommand === "compile" ? Bun.argv.slice(3) : subArgs, config);
     return;
   }
 
