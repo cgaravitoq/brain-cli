@@ -1,12 +1,17 @@
 {
-  "name": "notes-cli",
-  "module": "index.ts",
+  "name": "brain-cli",
+  "version": "0.1.0",
   "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "bin": {
+    "brain": "bin/brain.ts"
   },
-  "peerDependencies": {
+  "scripts": {
+    "dev": "bun run bin/brain.ts",
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
     "typescript": "^5"
   }
 }

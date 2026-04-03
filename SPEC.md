@@ -1,20 +1,18 @@
-# notes-cli — Spec
+# brain-cli — Spec
 
-Quick capture CLI for a Second Brain vault (Obsidian + LLM-maintained wiki).
-
-## What it does
-
-Capture notes, links, and thoughts from any terminal. Notes land in the vault's `raw/` directory as markdown files, ready for LLM compilation into a structured wiki.
+CLI for capturing, compiling, and querying a Second Brain vault (Obsidian + LLM-maintained wiki).
 
 ## Install
 
 ```bash
-bun install -g notes-cli
+git clone https://github.com/cgaravitoq/brain-cli.git
+cd brain-cli
+bun link
 ```
 
 ## Config
 
-Stored at `~/.config/brain/config.json`:
+Stored at `~/.config/brain/config.json` (XDG-compliant, overridable with `BRAIN_CONFIG_DIR`):
 
 ```json
 {
@@ -22,164 +20,119 @@ Stored at `~/.config/brain/config.json`:
 }
 ```
 
-On first run, if no config exists, prompt the user for the vault path and save it.
+On first run, prompts for the vault path.
 
 ## Commands
 
-### `brain <text>`
+### Implemented
 
-Quick capture. Saves a note to `raw/notes/`.
+#### `brain <text>`
+Quick note capture → `raw/notes/`. Generates timestamped filename with slug.
 
-```bash
-brain "Braintrust allows full LLM observability including traces and evals"
-```
+#### `brain -t "Title" <text>`
+Note with explicit title in frontmatter, text as body.
 
-Creates:
+#### `brain -e`
+Opens `$EDITOR` for longer notes. Saves on close if non-empty.
 
-```
-raw/notes/2026-04-03-2120-braintrust-allows-full-llm-observabilit.md
-```
+#### `brain clip <url>`
+Fetches URL, converts HTML to markdown, saves to `raw/articles/` with source URL in frontmatter.
 
-With content:
+#### `brain list`
+Lists unprocessed items across `raw/` subdirectories. Filters by `status: processed` in frontmatter.
 
-```markdown
----
-title: "Braintrust allows full LLM observability including traces and evals"
-created: 2026-04-03
-tags: [raw, unprocessed]
----
+#### `brain stats`
+Vault stats: wiki articles, raw sources, unprocessed count, vault path.
 
-Braintrust allows full LLM observability including traces and evals
-```
+#### `brain search <query>`
+Full-text search across entire vault. Shows matching filenames and context preview.
 
-### `brain -t "Title" <text>`
+#### `brain config [path]`
+View or set vault path.
 
-Note with explicit title. The title goes in frontmatter, the text is the body.
+### To implement
 
-```bash
-brain -t "Retry Pattern" "Per-section retry is better than per-job in parallel pipelines"
-```
-
-### `brain -e`
-
-Opens `$EDITOR` (or `vim`) for longer notes. Saves on close if content is non-empty.
-
-### `brain clip <url>`
-
-Fetch a URL, convert to markdown, save to `raw/articles/`. Uses readable extraction (not raw HTML).
+#### `brain compile`
+Compiles unprocessed raw files into wiki articles by invoking a Claude Code subagent.
 
 ```bash
-brain clip https://blog.example.com/interesting-post
+brain compile              # Compile all unprocessed
+brain compile --dry-run    # Show what would be compiled
+brain compile --model opus # Override model (default: sonnet)
+brain compile --no-push    # Compile but don't git push
+brain compile --verbose    # Show agent output
 ```
 
-Creates `raw/articles/2026-04-03-2120-interesting-post.md` with the page content as markdown and source URL in frontmatter.
+**Flow:**
+1. Scan `raw/` for files without `status: processed`
+2. If none found, exit with "Nothing to compile"
+3. Build compilation prompt with file paths and compilation rules
+4. Invoke `claude -p --agent compiler --permission-mode bypassPermissions --cwd <vault>`
+5. The compiler subagent:
+   - Reads each unprocessed file
+   - Creates/updates wiki articles in `wiki/concepts/`
+   - Updates `wiki/indexes/INDEX.md`
+   - Marks raw files as `status: processed`
+6. After agent completes: `git add -A && git commit -m "wiki: compile <N> articles" && git push`
 
-### `brain list`
+**Compiler subagent** lives at `<vault>/.claude/agents/compiler.md` and is auto-created by `brain compile` if missing. Contains:
+- model: sonnet (overridable via `--model`)
+- tools: Read, Write, Edit, Glob, Grep
+- System prompt: compilation rules (see below)
 
-List unprocessed items across all `raw/` subdirectories.
+**Compilation rules** (embedded in subagent system prompt):
+- Read the full raw article
+- Identify core concept(s) — one article per distinct concept
+- Keep: definitions, architecture, patterns, practical examples, tradeoffs, limitations
+- Drop: marketing language, repetition, filler, trivial setup steps
+- Preserve: specific numbers, quotes with insight, illustrative code examples
+- Structure: concise opening (2-3 sentences), substance-driven sections, tables for comparisons, code blocks only when they illustrate
+- Use `[[wikilinks]]` for all internal references
+- Images use `![[filename]]` syntax
+- Every article must link to ≥2 related concepts
+- Add unreferenced concepts to INDEX.md as pending
+- Density target: compress to ~30-50% of original length
+- Frontmatter: title, aliases, tags (lowercase-hyphenated), created, sources, related
 
-```bash
-brain list
+#### `brain lint`
+Future: health checks over the wiki (broken links, missing frontmatter, orphan concepts, stale articles).
 
-📂 Notes (2)
-  • Braintrust allows full LLM observability...
-  • Retry Pattern
-
-📂 Articles (3)
-  • Thread by @himanshustwts
-  • Connect Claude Code to tools via MCP
-  • Create custom subagents
-
-5 unprocessed item(s)
-```
-
-### `brain stats`
-
-Vault stats overview.
-
-```bash
-brain stats
-
-🧠 Second Brain
-   Wiki articles:  1
-   Raw sources:    5
-   Unprocessed:    4
-   Vault:          ~/Developer/personal/brain
-```
-
-### `brain config [path]`
-
-View or set the vault path.
-
-```bash
-brain config                              # show current
-brain config ~/Developer/personal/brain   # set new path
-```
-
-### `brain search <query>`
-
-Full-text search across the entire vault (raw + wiki + output). Shows matching filenames and a preview of the matching line.
-
-```bash
-brain search "orchestration"
-
-📄 wiki/concepts/llm-knowledge-bases.md
-   ...Agent Orchestration Pattern...
-
-📄 raw/notes/2026-04-03-agent-orchestration.md
-   ...planner generates outline, workers in parallel...
-```
+#### `brain open`
+Future: open vault in Obsidian (`open obsidian://vault/<name>`).
 
 ## Technical
 
 - **Runtime:** Bun
-- **Language:** TypeScript
-- **Zero dependencies** — use Bun built-ins only (file I/O, glob, fetch for clip)
+- **Language:** TypeScript, strict mode
+- **Zero dependencies** — Bun built-ins only
 - **Binary name:** `brain`
-- **Executable:** `bin/brain.ts` with `#!/usr/bin/env bun` shebang
-- **Package name:** `brain-cli` (or `@cgaravitoq/brain-cli`)
+- **Package name:** `brain-cli`
+- **Config:** XDG-compliant, `BRAIN_CONFIG_DIR` env for test isolation
+- **Tests:** `bun test`, real temp dirs, no mocks
 
 ## File naming
 
 Pattern: `{YYYY-MM-DD}-{HHmm}-{slug}.md`
 
-- Date and time from local timezone
-- Slug: first ~50 chars of title/content, lowercased, spaces to hyphens, non-alphanumeric stripped
-
-## Frontmatter
-
-Every generated file has:
-
-```yaml
----
-title: "..."
-created: YYYY-MM-DD
-tags: [raw, unprocessed]
-source: "https://..."     # only for clip command
----
-```
-
-## Structure
+## Architecture
 
 ```
-notes-cli/
-├── bin/
-│   └── brain.ts          # Entry point with shebang
-├── src/
-│   ├── commands/
-│   │   ├── note.ts       # brain <text> and brain -t
-│   │   ├── clip.ts       # brain clip <url>
-│   │   ├── list.ts       # brain list
-│   │   ├── stats.ts      # brain stats
-│   │   ├── search.ts     # brain search <query>
-│   │   └── config.ts     # brain config [path]
-│   ├── config.ts         # Load/save ~/.config/brain/config.json
-│   ├── frontmatter.ts    # Generate YAML frontmatter
-│   └── utils.ts          # slugify, file naming, path helpers
-├── package.json
-├── tsconfig.json
-├── CLAUDE.md             # → symlink to AGENTS.md
-├── AGENTS.md
-├── SPEC.md               # This file
-└── README.md
+bin/brain.ts              # Entry: parseArgs + routing + error boundary
+src/
+  types.ts                # Config, Frontmatter, CommandHandler interfaces
+  errors.ts               # CLIError, die()
+  config.ts               # XDG config load/save
+  frontmatter.ts          # YAML frontmatter generate/parse
+  utils.ts                # slugify, filenames, expandHome, dates
+  html.ts                 # HTML-to-markdown (zero deps)
+  commands/
+    note.ts               # brain <text>, -t, -e
+    clip.ts               # brain clip <url>
+    list.ts               # brain list (filtered by unprocessed)
+    stats.ts              # brain stats
+    search.ts             # brain search <query>
+    config.ts             # brain config [path]
+    compile.ts            # brain compile (TODO)
+test/                     # Mirrors src/, real temp dirs
+  helpers.ts              # createTestVault(), createTestConfigDir()
 ```
