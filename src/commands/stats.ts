@@ -40,6 +40,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     "~",
   );
 
+  console.log(`\n\u{1F9E0} Second Brain`);
   console.log(`   Wiki articles:  ${wikiCount}`);
   console.log(`   Raw sources:    ${rawCount}`);
   console.log(`   Unprocessed:    ${unprocessed}`);
