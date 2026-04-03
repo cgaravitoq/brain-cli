@@ -94,12 +94,6 @@ brain compile --verbose    # Show agent output
 - Density target: compress to ~30-50% of original length
 - Frontmatter: title, aliases, tags (lowercase-hyphenated), created, sources, related
 
-#### `brain lint`
-Future: health checks over the wiki (broken links, missing frontmatter, orphan concepts, stale articles).
-
-#### `brain open`
-Future: open vault in Obsidian (`open obsidian://vault/<name>`).
-
 ## Backlog
 
 ### Search improvements
@@ -115,10 +109,31 @@ Current `brain search` is basic substring match. Future iterations:
 - **Incremental compile** — only re-compile articles whose sources changed
 - **Multi-model pipeline** — cheaper model for extraction, better model for synthesis
 
+### Search engine (web UI + MCP tool)
+Karpathy's approach: a standalone search service over the wiki, usable three ways:
+- **Web UI** — browse and search results in a browser (local dev server)
+- **CLI** — `brain search` but with indexing, ranking, fuzzy matching
+- **MCP server / tool** — LLM calls it as a tool during compilation or Q&A, enabling the agent to research the wiki before answering
+
+Implementation ideas:
+- Index all `.md` files on startup or on change (watch mode)
+- Full-text index with TF-IDF or BM25 ranking
+- Optional: embeddings for semantic search (local model or API)
+- Web UI: simple Bun HTTP server, markdown rendering, link navigation
+- MCP: expose as stdio MCP server for Claude Code (`brain mcp serve`)
+- Becomes essential at ~50-100+ articles when substring match breaks down
+
+### Compile improvements
+- **Context injection** — pass list of existing wiki concepts to the compiler so it avoids duplicates and links better
+- **Incremental compile** — only re-compile articles whose sources changed
+- **Multi-model pipeline** — cheaper model for extraction, better model for synthesis
+
 ### General
 - **`brain push`** — manual git add + commit + push without compiling
 - **`brain pull`** — git pull for multi-device sync
 - **`brain log`** — show recent compile history (git log filtered by wiki commits)
+- **`brain lint`** — health checks: broken wikilinks, missing frontmatter, orphan concepts, stale articles, duplicates
+- **`brain open`** — open vault in Obsidian (`open obsidian://vault/<name>`)
 
 ## Technical
 
