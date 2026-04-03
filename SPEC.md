@@ -100,6 +100,26 @@ Future: health checks over the wiki (broken links, missing frontmatter, orphan c
 #### `brain open`
 Future: open vault in Obsidian (`open obsidian://vault/<name>`).
 
+## Backlog
+
+### Search improvements
+Current `brain search` is basic substring match. Future iterations:
+- **Fuzzy matching** — "orchestrate" should find "orchestration"
+- **Multi-term** — `brain search "agent pattern"` should match files containing both words, not just the exact phrase
+- **Ranking** — order results by relevance (match frequency, title match > body match, wiki > raw)
+- **Tag filtering** — `brain search --tag agents "pattern"` to scope search
+- **Frontmatter-aware** — understand title/tags/aliases as higher-weight fields
+
+### Compile improvements
+- **Context injection** — pass list of existing wiki concepts to the compiler so it avoids duplicates and links better
+- **Incremental compile** — only re-compile articles whose sources changed
+- **Multi-model pipeline** — cheaper model for extraction, better model for synthesis
+
+### General
+- **`brain push`** — manual git add + commit + push without compiling
+- **`brain pull`** — git pull for multi-device sync
+- **`brain log`** — show recent compile history (git log filtered by wiki commits)
+
 ## Technical
 
 - **Runtime:** Bun
