@@ -19,7 +19,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     if (!content.toLowerCase().includes(queryLower)) continue;
 
     matchCount++;
-    console.log(`\n\u{1F4C4} ${path}`);
+    console.log(path);
 
     // Find and display matching lines
     const lines = content.split("\n");
