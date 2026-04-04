@@ -4,6 +4,11 @@ import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { parseFrontmatter } from "../frontmatter";
+import {
+  runGit,
+  isGitRepo,
+  parseGitStatusPaths as parseGitStatusPathsArray,
+} from "../git";
 
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
@@ -212,76 +217,26 @@ export function buildPrompt(files: UnprocessedFile[], wikiArticles: WikiArticle[
 }
 
 function parseGitStatusPaths(output: string): Set<string> {
-  const paths = new Set<string>();
-
-  for (const line of output.split("\n")) {
-    if (!line) continue;
-
-    let path = line.slice(3);
-    if (!path) continue;
-
-    if (path.includes(" -> ")) {
-      path = path.split(" -> ").pop() ?? path;
-    }
-
-    // git wraps paths with spaces/special chars in quotes
-    if (path.startsWith('"') && path.endsWith('"')) {
-      path = path.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
-
-    paths.add(path);
-  }
-
-  return paths;
+  return new Set(parseGitStatusPathsArray(output));
 }
 
 function difference(after: Set<string>, before: Set<string>): string[] {
   return [...after].filter((path) => !before.has(path)).sort();
 }
 
-async function runPipedCommand(
-  args: string[],
-  cwd: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  let proc: ReturnType<typeof Bun.spawn>;
-
-  try {
-    proc = Bun.spawn(args, {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-  } catch (err) {
-    die(
-      err instanceof Error && err.message.includes('Executable not found')
-        ? `${args[0]} not found in PATH`
-        : `failed to start ${args[0]}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
-
-  return { exitCode, stdout, stderr };
-}
-
 async function getGitStatusPaths(vault: string): Promise<Set<string> | null> {
-  const repoCheck = await runPipedCommand(
-    ["git", "rev-parse", "--is-inside-work-tree"],
-    vault,
-  );
-
-  if (repoCheck.exitCode !== 0) {
+  if (!(await isGitRepo(vault))) {
     return null;
   }
 
-  const status = await runPipedCommand(
-    ["git", "status", "--porcelain", "--untracked-files=all", "--", "raw", "wiki"],
-    vault,
-  );
+  const status = await runGit(vault, [
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    "--",
+    "raw",
+    "wiki",
+  ]);
 
   if (status.exitCode !== 0) {
     die(status.stderr.trim() || "git status failed");
@@ -374,18 +329,18 @@ export async function run(args: string[], config: Config): Promise<void> {
     return;
   }
 
-  const gitAdd = await runPipedCommand(
-    ["git", "add", "--", ...changedPaths],
-    vault,
-  );
+  const gitAdd = await runGit(vault, ["add", "--", ...changedPaths]);
   if (gitAdd.exitCode !== 0) {
     die(gitAdd.stderr.trim() || "git add failed");
   }
 
-  const stagedDiff = await runPipedCommand(
-    ["git", "diff", "--cached", "--quiet", "--", ...changedPaths],
-    vault,
-  );
+  const stagedDiff = await runGit(vault, [
+    "diff",
+    "--cached",
+    "--quiet",
+    "--",
+    ...changedPaths,
+  ]);
 
   if (stagedDiff.exitCode === 0) {
     console.log("No new compile changes to commit.");
@@ -396,10 +351,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   }
 
   const commitMsg = `wiki: compile ${files.length} source(s)`;
-  const gitCommit = await runPipedCommand(
-    ["git", "commit", "-m", commitMsg],
-    vault,
-  );
+  const gitCommit = await runGit(vault, ["commit", "-m", commitMsg]);
 
   if (gitCommit.exitCode !== 0) {
     die(gitCommit.stderr.trim() || "git commit failed");
@@ -408,7 +360,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   console.log(`Committed: ${commitMsg}`);
 
   if (!options.noPush) {
-    const gitPush = await runPipedCommand(["git", "push"], vault);
+    const gitPush = await runGit(vault, ["push"]);
     if (gitPush.exitCode !== 0) {
       die(gitPush.stderr.trim() || "git push failed");
     }
