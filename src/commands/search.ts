@@ -1,13 +1,32 @@
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { stem } from "../search/stemmer";
+import { parseFrontmatter } from "../frontmatter";
 
 export async function run(args: string[], config: Config): Promise<void> {
-  const query = args.join(" ").trim();
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      tag: { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
+  });
+
+  const query = positionals.join(" ").trim();
   if (!query) {
     die("Usage: brain search <query>", 2);
   }
+
+  const tagFilter: string[] | null =
+    typeof values.tag === "string"
+      ? values.tag
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length > 0)
+      : null;
 
   const terms = query
     .split(/\s+/)
@@ -20,6 +39,25 @@ export async function run(args: string[], config: Config): Promise<void> {
   for await (const path of glob.scan({ cwd: config.vault })) {
     const fullPath = join(config.vault, path);
     const content = await Bun.file(fullPath).text();
+
+    // Tag filtering: skip files that don't match any of the requested tags
+    if (tagFilter) {
+      const parsed = parseFrontmatter(content);
+      if (!parsed) continue;
+      const tagsRaw = parsed.frontmatter["tags"];
+      if (!tagsRaw) continue;
+      // Tags are stored as "[tag1, tag2]" — strip brackets, split on comma
+      const fileTags = tagsRaw
+        .replace(/^\[/, "")
+        .replace(/\]$/, "")
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter((t) => t.length > 0);
+      // OR semantics: file matches if it has ANY of the filter tags
+      const hasMatch = tagFilter.some((ft) => fileTags.includes(ft));
+      if (!hasMatch) continue;
+    }
+
     const contentLower = content.toLowerCase();
 
     // AND semantics: every term must appear somewhere in the content

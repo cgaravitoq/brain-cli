@@ -72,7 +72,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "file", "push"]);
+    const rawArgCommands = new Set(["compile", "ask", "file", "push", "search"]);
     await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);
     return;
   }

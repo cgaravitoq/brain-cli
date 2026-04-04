@@ -201,4 +201,75 @@ describe("search command", () => {
     // Both "orchestrated" and "orchestrator" stem to "orchestr"
     expect(output).toContain("stem6.md");
   });
+
+  // --- Tag filtering tests ---
+
+  test("--tag filters results by tag", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "agents.md"),
+      "---\ntitle: \"Agents\"\ncreated: 2026-04-03\ntags: [agents, raw]\n---\n\nAgent orchestration topic\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "devops.md"),
+      "---\ntitle: \"DevOps\"\ncreated: 2026-04-03\ntags: [devops, raw]\n---\n\nAgent deployment topic\n",
+    );
+
+    await run(["--tag", "agents", "agent"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("agents.md");
+    expect(output).not.toContain("devops.md");
+  });
+
+  test("--tag supports comma-separated tags", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "agents.md"),
+      "---\ntitle: \"Agents\"\ncreated: 2026-04-03\ntags: [agents, raw]\n---\n\nAgent orchestration topic\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "devops.md"),
+      "---\ntitle: \"DevOps\"\ncreated: 2026-04-03\ntags: [devops, raw]\n---\n\nAgent deployment topic\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "other.md"),
+      "---\ntitle: \"Other\"\ncreated: 2026-04-03\ntags: [misc]\n---\n\nAgent misc topic\n",
+    );
+
+    await run(["--tag", "agents,devops", "agent"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("agents.md");
+    expect(output).toContain("devops.md");
+    expect(output).not.toContain("other.md");
+  });
+
+  test("no --tag returns all matching files", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "agents.md"),
+      "---\ntitle: \"Agents\"\ncreated: 2026-04-03\ntags: [agents, raw]\n---\n\nAgent orchestration topic\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "devops.md"),
+      "---\ntitle: \"DevOps\"\ncreated: 2026-04-03\ntags: [devops, raw]\n---\n\nAgent deployment topic\n",
+    );
+
+    await run(["agent"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("agents.md");
+    expect(output).toContain("devops.md");
+  });
+
+  test("file without frontmatter skipped when --tag active", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "plain.md"),
+      "Just some plain text about agents without frontmatter\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "tagged.md"),
+      "---\ntitle: \"Tagged\"\ncreated: 2026-04-03\ntags: [agents]\n---\n\nAgent orchestration topic\n",
+    );
+
+    await run(["--tag", "agents", "agent"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("tagged.md");
+    expect(output).not.toContain("plain.md");
+  });
 });
