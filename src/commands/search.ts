@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Config } from "../types";
 import { die } from "../errors";
+import { stem } from "../search/stemmer";
 
 export async function run(args: string[], config: Config): Promise<void> {
   const query = args.join(" ").trim();
@@ -22,14 +23,22 @@ export async function run(args: string[], config: Config): Promise<void> {
     const contentLower = content.toLowerCase();
 
     // AND semantics: every term must appear somewhere in the content
-    if (!terms.every((term) => contentLower.includes(term))) continue;
+    const exactMatch = terms.every((term) => contentLower.includes(term));
+
+    if (!exactMatch) {
+      // Fallback: try stemmed matching — stem(query term) vs stem(content words)
+      const contentWords = contentLower.split(/[^a-z]+/).filter((w) => w.length > 0);
+      const stemmedContent = new Set(contentWords.map((w) => stem(w)));
+      const stemmedMatch = terms.every((t) => stemmedContent.has(stem(t)));
+      if (!stemmedMatch) continue;
+    }
 
     matchCount++;
     console.log(path);
 
     // Find the best context line — prefer lines containing the most terms
     const lines = content.split("\n");
-    const bestLine = pickBestLine(lines, terms);
+    const bestLine = pickBestLine(lines, terms, !exactMatch);
     if (bestLine) {
       const trimmed = bestLine.trim();
       const firstTerm = terms[0]!;
@@ -55,7 +64,11 @@ export async function run(args: string[], config: Config): Promise<void> {
 }
 
 /** Pick the line containing the most search terms, skipping empty/frontmatter lines. */
-function pickBestLine(lines: string[], terms: string[]): string | null {
+function pickBestLine(
+  lines: string[],
+  terms: string[],
+  useStemming = false,
+): string | null {
   let best: string | null = null;
   let bestScore = 0;
 
@@ -64,7 +77,18 @@ function pickBestLine(lines: string[], terms: string[]): string | null {
     if (!trimmed || trimmed === "---") continue;
 
     const lower = line.toLowerCase();
-    const score = terms.filter((t) => lower.includes(t)).length;
+    let score: number;
+
+    if (useStemming) {
+      const lineWords = lower.split(/[^a-z]+/).filter((w) => w.length > 0);
+      const stemmedLine = new Set(lineWords.map((w) => stem(w)));
+      score = terms.filter(
+        (t) => lower.includes(t) || stemmedLine.has(stem(t)),
+      ).length;
+    } else {
+      score = terms.filter((t) => lower.includes(t)).length;
+    }
+
     if (score > bestScore) {
       bestScore = score;
       best = line;

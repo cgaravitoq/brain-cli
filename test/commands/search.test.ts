@@ -128,4 +128,77 @@ describe("search command", () => {
     // The line with both "agent" and "pattern" should be shown
     expect(output).toContain("agent uses a pattern");
   });
+
+  // --- Fuzzy search (stemming) tests ---
+
+  test("stemmed search: 'orchestrate' finds file with 'orchestration'", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem1.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nAgent Orchestration Pattern\n",
+    );
+
+    await run(["orchestrate"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("stem1.md");
+    expect(output).toContain("Orchestration");
+  });
+
+  test("stemmed search: 'orchestration' still works (exact match)", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem2.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nAgent Orchestration Pattern\n",
+    );
+
+    await run(["orchestration"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("stem2.md");
+    expect(output).toContain("Orchestration");
+  });
+
+  test("stemmed search: 'running' finds file with 'run'", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem3.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nHow to run a process\n",
+    );
+
+    await run(["running"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("stem3.md");
+  });
+
+  test("stemmed search: multi-term AND still works with stemming", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem4.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe orchestration of agents is complex.\n",
+    );
+
+    // "orchestrate" stems to "orchestr", matching "orchestration"
+    // "agents" stems to "agent", matching "agents"
+    await run(["orchestrate", "agent"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("stem4.md");
+  });
+
+  test("stemmed search: multi-term AND rejects when one term has no stem match", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem5.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe orchestration layer\n",
+    );
+
+    await run(["orchestrate", "database"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("No results found.");
+  });
+
+  test("stemmed search: 'orchestrated' finds file with 'orchestrator'", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "stem6.md"),
+      "---\ntitle: \"Stem\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe orchestrator manages tasks\n",
+    );
+
+    await run(["orchestrated"], vault.config);
+    const output = logs.join("\n");
+    // Both "orchestrated" and "orchestrator" stem to "orchestr"
+    expect(output).toContain("stem6.md");
+  });
 });
