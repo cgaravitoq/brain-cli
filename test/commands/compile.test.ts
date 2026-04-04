@@ -1,14 +1,17 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
-import { rm } from "node:fs/promises";
+import { rm, mkdir } from "node:fs/promises";
 import { createTestVault, createFakeExecutable, type TestVault } from "../helpers";
 import { generateFrontmatter } from "../../src/frontmatter";
 import {
   parseCompileArgs,
   scanUnprocessed,
+  scanWikiInventory,
+  buildPrompt,
   ensureCompilerAgent,
   run,
 } from "../../src/commands/compile";
+import type { WikiArticle, UnprocessedFile } from "../../src/commands/compile";
 
 describe("compile command", () => {
   let vault: TestVault;
@@ -300,6 +303,94 @@ describe("compile command", () => {
       expect(output).toContain("Compiling 1 file(s)...");
       expect(output).toContain("Compilation complete.");
       expect(output).toContain("Skipping git commit: vault is not a git repository.");
+    });
+  });
+
+  describe("scanWikiInventory", () => {
+    test("returns correct articles from wiki directory", async () => {
+      const wikiContent = `---\ntitle: "Test Concept"\ntags: [ai, ml]\ncreated: 2026-04-03\n---\n\nSome wiki content.\n`;
+      await mkdir(join(vault.config.vault, "wiki", "concepts"), { recursive: true });
+      await Bun.write(
+        join(vault.config.vault, "wiki", "concepts", "test.md"),
+        wikiContent,
+      );
+
+      const articles = await scanWikiInventory(vault.config.vault);
+      expect(articles).toHaveLength(1);
+      expect(articles[0]!.path).toBe(join("wiki", "concepts", "test.md"));
+      expect(articles[0]!.title).toBe("Test Concept");
+      expect(articles[0]!.tags).toBe("ai, ml");
+    });
+
+    test("articles without frontmatter use filename as title", async () => {
+      await mkdir(join(vault.config.vault, "wiki", "concepts"), { recursive: true });
+      await Bun.write(
+        join(vault.config.vault, "wiki", "concepts", "my-concept.md"),
+        "Just some plain text without any frontmatter.\n",
+      );
+
+      const articles = await scanWikiInventory(vault.config.vault);
+      expect(articles).toHaveLength(1);
+      expect(articles[0]!.title).toBe("my-concept");
+      expect(articles[0]!.tags).toBe("");
+    });
+
+    test("returns empty array when no wiki files exist", async () => {
+      const articles = await scanWikiInventory(vault.config.vault);
+      expect(articles).toEqual([]);
+    });
+
+    test("returns articles sorted by path", async () => {
+      await mkdir(join(vault.config.vault, "wiki", "concepts"), { recursive: true });
+      await Bun.write(
+        join(vault.config.vault, "wiki", "concepts", "zebra.md"),
+        `---\ntitle: "Zebra"\ntags: [animals]\ncreated: 2026-04-03\n---\n\nContent.\n`,
+      );
+      await Bun.write(
+        join(vault.config.vault, "wiki", "concepts", "alpha.md"),
+        `---\ntitle: "Alpha"\ntags: [greek]\ncreated: 2026-04-03\n---\n\nContent.\n`,
+      );
+
+      const articles = await scanWikiInventory(vault.config.vault);
+      expect(articles).toHaveLength(2);
+      expect(articles[0]!.title).toBe("Alpha");
+      expect(articles[1]!.title).toBe("Zebra");
+    });
+  });
+
+  describe("buildPrompt", () => {
+    const files: UnprocessedFile[] = [
+      { path: "raw/notes/test.md", title: "Test Note" },
+    ];
+
+    test("includes inventory table when wiki has articles", () => {
+      const wikiArticles: WikiArticle[] = [
+        { path: "wiki/concepts/foo.md", title: "Foo Concept", tags: "tag1, tag2" },
+      ];
+
+      const prompt = buildPrompt(files, wikiArticles);
+      expect(prompt).toContain("## Existing wiki articles");
+      expect(prompt).toContain("| Path | Title | Tags |");
+      expect(prompt).toContain("| wiki/concepts/foo.md | Foo Concept | tag1, tag2 |");
+      expect(prompt).toContain("Do NOT recreate or duplicate any of the articles listed above.");
+    });
+
+    test("empty wiki skips inventory section", () => {
+      const prompt = buildPrompt(files, []);
+      expect(prompt).not.toContain("Existing wiki articles");
+      expect(prompt).toContain("Follow the compilation rules in your system prompt.");
+    });
+
+    test("includes all files in prompt", () => {
+      const multiFiles: UnprocessedFile[] = [
+        { path: "raw/notes/a.md", title: "Note A" },
+        { path: "raw/articles/b.md", title: "Article B" },
+      ];
+
+      const prompt = buildPrompt(multiFiles, []);
+      expect(prompt).toContain("2 unprocessed file(s)");
+      expect(prompt).toContain("`raw/notes/a.md`");
+      expect(prompt).toContain("`raw/articles/b.md`");
     });
   });
 });

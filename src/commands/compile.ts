@@ -56,6 +56,12 @@ related: []
 Compress to ~30-50% of original length while preserving all substance.
 `;
 
+export interface WikiArticle {
+  path: string;   // relative path like "wiki/concepts/foo.md"
+  title: string;  // from frontmatter, or filename without .md
+  tags: string;   // comma-separated tags from frontmatter, or empty string
+}
+
 export interface CompileOptions {
   dryRun: boolean;
   model: string;
@@ -124,6 +130,38 @@ export async function scanUnprocessed(vault: string): Promise<UnprocessedFile[]>
   return files;
 }
 
+export async function scanWikiInventory(vault: string): Promise<WikiArticle[]> {
+  const wikiDir = join(vault, "wiki");
+  const glob = new Bun.Glob("**/*.md");
+  const articles: WikiArticle[] = [];
+
+  try {
+    for await (const relPath of glob.scan({ cwd: wikiDir, absolute: false })) {
+      const fullPath = join(wikiDir, relPath);
+      const content = await Bun.file(fullPath).text();
+      const parsed = parseFrontmatter(content);
+
+      const filename = relPath.replace(/\.md$/, "").split("/").pop() ?? relPath;
+      const title = parsed?.frontmatter.title || filename;
+
+      let tags = "";
+      if (parsed?.frontmatter.tags) {
+        const raw = parsed.frontmatter.tags;
+        // Tags are stored as "[tag1, tag2]" string from our frontmatter parser
+        const stripped = raw.replace(/^\[/, "").replace(/\]$/, "").trim();
+        tags = stripped;
+      }
+
+      articles.push({ path: join("wiki", relPath), title, tags });
+    }
+  } catch {
+    // wiki directory may not exist
+  }
+
+  articles.sort((a, b) => a.path.localeCompare(b.path));
+  return articles;
+}
+
 export async function ensureCompilerAgent(vault: string, model: string): Promise<string> {
   const agentDir = join(vault, ".claude", "agents");
   const agentPath = join(agentDir, "compiler.md");
@@ -146,7 +184,7 @@ ${COMPILER_SYSTEM_PROMPT}`;
   return agentPath;
 }
 
-function buildPrompt(files: UnprocessedFile[]): string {
+export function buildPrompt(files: UnprocessedFile[], wikiArticles: WikiArticle[]): string {
   const lines = [
     `Compile the following ${files.length} unprocessed file(s) into wiki articles:`,
     "",
@@ -155,6 +193,20 @@ function buildPrompt(files: UnprocessedFile[]): string {
     lines.push(`- \`${f.path}\` — ${f.title}`);
   }
   lines.push("");
+
+  if (wikiArticles.length > 0) {
+    lines.push("## Existing wiki articles");
+    lines.push("");
+    lines.push("| Path | Title | Tags |");
+    lines.push("|------|-------|------|");
+    for (const a of wikiArticles) {
+      lines.push(`| ${a.path} | ${a.title} | ${a.tags} |`);
+    }
+    lines.push("");
+    lines.push("Do NOT recreate or duplicate any of the articles listed above. Reference them with wikilinks where relevant.");
+    lines.push("");
+  }
+
   lines.push("Follow the compilation rules in your system prompt.");
   return lines.join("\n");
 }
@@ -261,7 +313,8 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   await ensureCompilerAgent(vault, options.model);
 
-  const prompt = buildPrompt(files);
+  const wikiArticles = await scanWikiInventory(vault);
+  const prompt = buildPrompt(files, wikiArticles);
 
   console.log(`Compiling ${files.length} file(s)...`);
 
