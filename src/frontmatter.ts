@@ -19,6 +19,39 @@ export function generateFrontmatter(fm: Frontmatter): string {
   return lines.join("\n");
 }
 
+/**
+ * Update or add key-value pairs in raw frontmatter without destroying
+ * multi-line YAML structures (arrays, etc). Works on the raw string.
+ */
+export function updateRawFrontmatter(
+  content: string,
+  updates: Record<string, string>,
+): string {
+  const match = content.match(/^---\n([\s\S]*?)\n---(\n[\s\S]*)?$/);
+  if (!match) {
+    const lines = ["---"];
+    for (const [key, value] of Object.entries(updates)) {
+      lines.push(`${key}: ${value}`);
+    }
+    lines.push("---");
+    return lines.join("\n") + "\n" + content;
+  }
+
+  let yaml = match[1]!;
+  const rest = match[2] ?? "";
+
+  for (const [key, value] of Object.entries(updates)) {
+    const regex = new RegExp(`^${key}:.*$`, "m");
+    if (regex.test(yaml)) {
+      yaml = yaml.replace(regex, `${key}: ${value}`);
+    } else {
+      yaml += `\n${key}: ${value}`;
+    }
+  }
+
+  return `---\n${yaml}\n---${rest}`;
+}
+
 export function parseFrontmatter(
   content: string,
 ): { frontmatter: Record<string, string>; body: string } | null {
