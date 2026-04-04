@@ -20,9 +20,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain pull               Git pull with rebase
        brain log                Show vault git log
        brain config [path]      View/set vault path
-       brain mcp                MCP server (stdio)`;
+       brain mcp                MCP server (stdio)
+       brain lint               Lint vault health`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
       pull: () => import("../src/commands/pull").then((m) => m.run),
       log: () => import("../src/commands/log").then((m) => m.run),
       mcp: () => import("../src/commands/mcp").then((m) => m.run),
+      lint: () => import("../src/commands/lint").then((m) => m.run),
     };
 
     const handler = await commands[subcommand]!();
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log", "mcp"]);
+    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log", "mcp", "lint"]);
     await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);
     return;
   }
