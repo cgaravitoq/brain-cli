@@ -1,15 +1,17 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { createTestVault, type TestVault } from "./helpers";
+import { createTestVault, createFakeExecutable, type TestVault } from "./helpers";
 import {
   parseAskArgs,
   generateAskFilename,
+  resolveAskOutputPath,
   buildAskFrontmatter,
   extractSources,
   extractTitle,
   extractSummary,
   ensureResearcherAgent,
+  run,
 } from "../src/commands/ask";
 
 let vault: TestVault;
@@ -77,6 +79,38 @@ describe("generateAskFilename", () => {
     const filename = generateAskFilename("what's the deal with C++ templates?", date);
     expect(filename).toMatch(/^2026-04-04-.+\.md$/);
     expect(filename).not.toMatch(/[?']/);
+  });
+});
+
+describe("resolveAskOutputPath", () => {
+  test("keeps the base filename when unused", async () => {
+    const outputDir = join(vault.config.vault, "output", "asks");
+    await mkdir(outputDir, { recursive: true });
+
+    const result = await resolveAskOutputPath(
+      outputDir,
+      "how does context routing work",
+      new Date(2026, 3, 4),
+    );
+
+    expect(result.filename).toBe("2026-04-04-how-does-context-routing-work.md");
+  });
+
+  test("adds a numeric suffix when the filename already exists", async () => {
+    const outputDir = join(vault.config.vault, "output", "asks");
+    await mkdir(outputDir, { recursive: true });
+    await Bun.write(
+      join(outputDir, "2026-04-04-how-does-context-routing-work.md"),
+      "existing",
+    );
+
+    const result = await resolveAskOutputPath(
+      outputDir,
+      "how does context routing work",
+      new Date(2026, 3, 4),
+    );
+
+    expect(result.filename).toBe("2026-04-04-how-does-context-routing-work-2.md");
   });
 });
 
@@ -195,5 +229,47 @@ describe("ensureResearcherAgent", () => {
     const agentPath = await ensureResearcherAgent(vault.config.vault, "opus");
     const content = await Bun.file(agentPath).text();
     expect(content).toContain("model: opus");
+  });
+});
+
+describe("run", () => {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalClaudeBin = process.env.BRAIN_CLAUDE_BIN;
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.error = originalError;
+    if (originalClaudeBin === undefined) {
+      delete process.env.BRAIN_CLAUDE_BIN;
+    } else {
+      process.env.BRAIN_CLAUDE_BIN = originalClaudeBin;
+    }
+  });
+
+  test("print-only mode keeps markdown on stdout and progress on stderr", async () => {
+    const fakeClaude = await createFakeExecutable(
+      "claude",
+      "#!/bin/sh\nprintf '# Answer\\n\\nBody text.\\n'\n",
+    );
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+    try {
+      await run(["-p", "test question"], vault.config);
+    } finally {
+      await fakeClaude.cleanup();
+    }
+
+    expect(logs).toEqual(["# Answer\n\nBody text."]);
+    expect(errors.join("\n")).toContain("Researching...");
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../src/types";
@@ -25,6 +25,24 @@ export async function createTestConfigDir(): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const dir = await mkdtemp(join(tmpdir(), "brain-config-test-"));
+  return {
+    dir,
+    cleanup: () => rm(dir, { recursive: true, force: true }),
+  };
+}
+
+export async function createFakeExecutable(
+  name: string,
+  script: string,
+): Promise<{
+  dir: string;
+  cleanup: () => Promise<void>;
+}> {
+  const dir = await mkdtemp(join(tmpdir(), "brain-bin-test-"));
+  const filepath = join(dir, name);
+  await Bun.write(filepath, script);
+  await chmod(filepath, 0o755);
+
   return {
     dir,
     cleanup: () => rm(dir, { recursive: true, force: true }),

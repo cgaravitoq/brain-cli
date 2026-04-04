@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { createTestVault, type TestVault } from "../helpers";
 import { generateFrontmatter } from "../../src/frontmatter";
 import { run } from "../../src/commands/list";
@@ -72,5 +73,27 @@ describe("list command", () => {
     expect(output).toContain("Notes (1)");
     expect(output).toContain("Articles (1)");
     expect(output).toContain("2 unprocessed item(s)");
+  });
+
+  test("skips missing raw directories", async () => {
+    await rm(join(vault.config.vault, "raw", "articles"), {
+      recursive: true,
+      force: true,
+    });
+
+    const fm = generateFrontmatter({
+      title: "Only Note",
+      created: "2026-04-03",
+      tags: ["raw", "unprocessed"],
+    });
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "only-note.md"),
+      `${fm}\n\nBody.\n`,
+    );
+
+    await run([], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("Only Note");
+    expect(output).toContain("1 unprocessed item(s)");
   });
 });

@@ -15,12 +15,12 @@ export function getConfigPath(): string {
   return join(getConfigDir(), "config.json");
 }
 
-export async function loadConfig(): Promise<Config> {
+export async function loadStoredConfig(): Promise<Config | null> {
   const configPath = getConfigPath();
   const file = Bun.file(configPath);
 
   if (!(await file.exists())) {
-    return await initConfig();
+    return null;
   }
 
   const raw: RawConfig = await file.json();
@@ -29,6 +29,15 @@ export async function loadConfig(): Promise<Config> {
   }
 
   return { vault: expandHome(raw.vault) };
+}
+
+export async function loadConfig(): Promise<Config> {
+  const config = await loadStoredConfig();
+  if (config) {
+    return config;
+  }
+
+  return await initConfig();
 }
 
 export async function saveConfig(vault: string): Promise<void> {

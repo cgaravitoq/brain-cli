@@ -182,6 +182,26 @@ describe("fileOutput", () => {
     expect(targetContent).toContain('  - "[[a]]"');
     expect(targetContent).toContain('  - "[[b]]"');
   });
+
+  test("fails instead of overwriting an existing raw file", async () => {
+    const content = `---\ntitle: "Test"\ncreated: 2026-04-04\n---\n\nBody.\n`;
+    await writeOutput(vault.config.vault, "asks", "2026-04-04-test.md", content);
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "2026-04-04-test.md"),
+      "existing",
+    );
+
+    const output: UnfiledOutput = {
+      path: "output/asks/2026-04-04-test.md",
+      name: "test",
+      date: "2026-04-04",
+      type: "asks",
+    };
+
+    expect(fileOutput(vault.config.vault, output, "note")).rejects.toThrow(
+      "target already exists",
+    );
+  });
 });
 
 describe("updateRawFrontmatter", () => {

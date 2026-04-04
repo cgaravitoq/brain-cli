@@ -63,6 +63,16 @@ export interface CompileOptions {
   verbose: boolean;
 }
 
+type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
+
+function readStream(stream: SubprocessStream | undefined): Promise<string> {
+  if (!stream || typeof stream === "number") {
+    return Promise.resolve("");
+  }
+
+  return new Response(stream).text();
+}
+
 export function parseCompileArgs(args: string[]): CompileOptions {
   const { values } = parseArgs({
     args,
@@ -97,12 +107,16 @@ export async function scanUnprocessed(vault: string): Promise<UnprocessedFile[]>
     const dir = join(vault, rawDir);
     const glob = new Bun.Glob("*.md");
 
-    for await (const path of glob.scan({ cwd: dir, absolute: false })) {
-      const content = await Bun.file(join(dir, path)).text();
-      const parsed = parseFrontmatter(content);
-      if (parsed?.frontmatter.status === "processed") continue;
-      const title = parsed?.frontmatter.title || path.replace(/\.md$/, "");
-      files.push({ path: join(rawDir, path), title });
+    try {
+      for await (const path of glob.scan({ cwd: dir, absolute: false })) {
+        const content = await Bun.file(join(dir, path)).text();
+        const parsed = parseFrontmatter(content);
+        if (parsed?.frontmatter.status === "processed") continue;
+        const title = parsed?.frontmatter.title || path.replace(/\.md$/, "");
+        files.push({ path: join(rawDir, path), title });
+      }
+    } catch {
+      continue;
     }
   }
 
@@ -145,6 +159,80 @@ function buildPrompt(files: UnprocessedFile[]): string {
   return lines.join("\n");
 }
 
+function parseGitStatusPaths(output: string): Set<string> {
+  const paths = new Set<string>();
+
+  for (const line of output.split("\n")) {
+    if (!line) continue;
+
+    let path = line.slice(3);
+    if (!path) continue;
+
+    if (path.includes(" -> ")) {
+      path = path.split(" -> ").pop() ?? path;
+    }
+
+    paths.add(path);
+  }
+
+  return paths;
+}
+
+function difference(after: Set<string>, before: Set<string>): string[] {
+  return [...after].filter((path) => !before.has(path)).sort();
+}
+
+async function runPipedCommand(
+  args: string[],
+  cwd: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  let proc: ReturnType<typeof Bun.spawn>;
+
+  try {
+    proc = Bun.spawn(args, {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch (err) {
+    die(
+      err instanceof Error && err.message.includes('Executable not found')
+        ? `${args[0]} not found in PATH`
+        : `failed to start ${args[0]}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    readStream(proc.stdout),
+    readStream(proc.stderr),
+    proc.exited,
+  ]);
+
+  return { exitCode, stdout, stderr };
+}
+
+async function getGitStatusPaths(vault: string): Promise<Set<string> | null> {
+  const repoCheck = await runPipedCommand(
+    ["git", "rev-parse", "--is-inside-work-tree"],
+    vault,
+  );
+
+  if (repoCheck.exitCode !== 0) {
+    return null;
+  }
+
+  const status = await runPipedCommand(
+    ["git", "status", "--porcelain", "--untracked-files=all", "--", "raw", "wiki"],
+    vault,
+  );
+
+  if (status.exitCode !== 0) {
+    die(status.stderr.trim() || "git status failed");
+  }
+
+  return parseGitStatusPaths(status.stdout);
+}
+
 export async function run(args: string[], config: Config): Promise<void> {
   const options = parseCompileArgs(args);
   const { vault } = config;
@@ -164,14 +252,17 @@ export async function run(args: string[], config: Config): Promise<void> {
     return;
   }
 
+  const gitBefore = await getGitStatusPaths(vault);
+
   await ensureCompilerAgent(vault, options.model);
 
   const prompt = buildPrompt(files);
 
   console.log(`Compiling ${files.length} file(s)...`);
 
+  const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
   const claudeArgs = [
-    "claude",
+    claudeBin,
     "-p", prompt,
     "--agent", "compiler",
     "--permission-mode", "bypassPermissions",
@@ -181,17 +272,26 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  const proc = Bun.spawn(claudeArgs, {
-    stdout: options.verbose ? "inherit" : "pipe",
-    stderr: options.verbose ? "inherit" : "pipe",
-    cwd: vault,
-  });
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(claudeArgs, {
+      stdout: options.verbose ? "inherit" : "pipe",
+      stderr: options.verbose ? "inherit" : "pipe",
+      cwd: vault,
+    });
+  } catch (err) {
+    die(
+      err instanceof Error && err.message.includes('Executable not found')
+        ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
+        : `failed to start compiler agent: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   const exitCode = await proc.exited;
 
   if (exitCode !== 0) {
     if (!options.verbose) {
-      const stderr = await new Response(proc.stderr).text();
+      const stderr = await readStream(proc.stderr);
       if (stderr) console.error(stderr);
     }
     die(`compilation failed (exit code ${exitCode})`);
@@ -199,33 +299,60 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   console.log("Compilation complete.");
 
-  const gitAdd = Bun.spawn(["git", "add", "-A"], { cwd: vault });
-  if ((await gitAdd.exited) !== 0) {
-    die("git add failed");
+  if (gitBefore === null) {
+    console.log("Skipping git commit: vault is not a git repository.");
+    return;
   }
 
-  const commitMsg = `wiki: compile ${files.length} article(s)`;
-  const gitCommit = Bun.spawn(["git", "commit", "-m", commitMsg], {
-    cwd: vault,
-    stdout: options.verbose ? "inherit" : "pipe",
-    stderr: options.verbose ? "inherit" : "pipe",
-  });
-
-  if ((await gitCommit.exited) !== 0) {
-    console.log("No changes to commit.");
+  const gitAfter = await getGitStatusPaths(vault);
+  if (gitAfter === null) {
+    console.log("Skipping git commit: vault is not a git repository.");
     return;
+  }
+
+  const changedPaths = difference(gitAfter, gitBefore);
+  if (changedPaths.length === 0) {
+    console.log("No new compile changes to commit.");
+    return;
+  }
+
+  const gitAdd = await runPipedCommand(
+    ["git", "add", "--", ...changedPaths],
+    vault,
+  );
+  if (gitAdd.exitCode !== 0) {
+    die(gitAdd.stderr.trim() || "git add failed");
+  }
+
+  const stagedDiff = await runPipedCommand(
+    ["git", "diff", "--cached", "--quiet", "--", ...changedPaths],
+    vault,
+  );
+
+  if (stagedDiff.exitCode === 0) {
+    console.log("No new compile changes to commit.");
+    return;
+  }
+  if (stagedDiff.exitCode !== 1) {
+    die(stagedDiff.stderr.trim() || "git diff failed");
+  }
+
+  const commitMsg = `wiki: compile ${files.length} source(s)`;
+  const gitCommit = await runPipedCommand(
+    ["git", "commit", "-m", commitMsg],
+    vault,
+  );
+
+  if (gitCommit.exitCode !== 0) {
+    die(gitCommit.stderr.trim() || "git commit failed");
   }
 
   console.log(`Committed: ${commitMsg}`);
 
   if (!options.noPush) {
-    const gitPush = Bun.spawn(["git", "push"], {
-      cwd: vault,
-      stdout: options.verbose ? "inherit" : "pipe",
-      stderr: options.verbose ? "inherit" : "pipe",
-    });
-    if ((await gitPush.exited) !== 0) {
-      die("git push failed");
+    const gitPush = await runPipedCommand(["git", "push"], vault);
+    if (gitPush.exitCode !== 0) {
+      die(gitPush.stderr.trim() || "git push failed");
     }
     console.log("Pushed to remote.");
   }

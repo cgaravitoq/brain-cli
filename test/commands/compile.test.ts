@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
-import { createTestVault, type TestVault } from "../helpers";
+import { rm } from "node:fs/promises";
+import { createTestVault, createFakeExecutable, type TestVault } from "../helpers";
 import { generateFrontmatter } from "../../src/frontmatter";
 import {
   parseCompileArgs,
@@ -13,6 +14,7 @@ describe("compile command", () => {
   let vault: TestVault;
   let logs: string[];
   const originalLog = console.log;
+  const originalClaudeBin = process.env.BRAIN_CLAUDE_BIN;
 
   beforeEach(async () => {
     vault = await createTestVault();
@@ -24,6 +26,11 @@ describe("compile command", () => {
 
   afterEach(async () => {
     console.log = originalLog;
+    if (originalClaudeBin === undefined) {
+      delete process.env.BRAIN_CLAUDE_BIN;
+    } else {
+      process.env.BRAIN_CLAUDE_BIN = originalClaudeBin;
+    }
     await vault.cleanup();
   });
 
@@ -132,6 +139,27 @@ describe("compile command", () => {
 
       const files = await scanUnprocessed(vault.config.vault);
       expect(files).toHaveLength(2);
+    });
+
+    test("skips missing raw directories", async () => {
+      await rm(join(vault.config.vault, "raw", "articles"), {
+        recursive: true,
+        force: true,
+      });
+
+      const fm = generateFrontmatter({
+        title: "Only Note",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "only-note.md"),
+        `${fm}\n\nBody.\n`,
+      );
+
+      const files = await scanUnprocessed(vault.config.vault);
+      expect(files).toHaveLength(1);
+      expect(files[0]!.title).toBe("Only Note");
     });
   });
 
@@ -242,6 +270,36 @@ describe("compile command", () => {
       expect(output).toContain("Would compile 1 file(s):");
       expect(output).toContain("Pending");
       expect(output).not.toContain("Done");
+    });
+
+    test("non-dry-run succeeds outside git repositories", async () => {
+      const fakeClaude = await createFakeExecutable(
+        "claude",
+        "#!/bin/sh\nexit 0\n",
+      );
+
+      process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+      const fm = generateFrontmatter({
+        title: "My Note",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "my-note.md"),
+        `${fm}\n\nSome content.\n`,
+      );
+
+      try {
+        await run([], vault.config);
+      } finally {
+        await fakeClaude.cleanup();
+      }
+
+      const output = logs.join("\n");
+      expect(output).toContain("Compiling 1 file(s)...");
+      expect(output).toContain("Compilation complete.");
+      expect(output).toContain("Skipping git commit: vault is not a git repository.");
     });
   });
 });

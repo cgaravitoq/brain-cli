@@ -2,9 +2,9 @@
 
 import { parseArgs } from "node:util";
 import { CLIError } from "../src/errors";
-import { loadConfig } from "../src/config";
+import { loadConfig, loadStoredConfig } from "../src/config";
 import { run as noteRun } from "../src/commands/note";
-import type { CommandHandler, Config } from "../src/types";
+import type { CommandHandler } from "../src/types";
 
 const USAGE = `Usage: brain <text>           Quick capture
        brain -t "Title" <text> Note with title
@@ -50,7 +50,6 @@ async function main(): Promise<void> {
 
   // Subcommand routing
   if (subcommand && KNOWN_COMMANDS.has(subcommand)) {
-    const config = await loadConfig();
     const subArgs = positionals.slice(1);
 
     const commands: Record<string, () => Promise<CommandHandler>> = {
@@ -65,6 +64,11 @@ async function main(): Promise<void> {
     };
 
     const handler = await commands[subcommand]!();
+    const config =
+      subcommand === "config"
+        ? (await loadStoredConfig()) ?? { vault: "" }
+        : await loadConfig();
+
     // Commands with custom flag parsing need raw args
     const rawArgCommands = new Set(["compile", "ask", "file"]);
     await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);

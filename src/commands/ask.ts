@@ -45,6 +45,16 @@ export interface AskOptions {
   verbose: boolean;
 }
 
+type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
+
+function readStream(stream: SubprocessStream | undefined): Promise<string> {
+  if (!stream || typeof stream === "number") {
+    return Promise.resolve("");
+  }
+
+  return new Response(stream).text();
+}
+
 export function parseAskArgs(args: string[]): { options: AskOptions; question: string } {
   const { values, positionals } = parseArgs({
     args,
@@ -95,6 +105,28 @@ ${RESEARCHER_SYSTEM_PROMPT}`;
 export function generateAskFilename(question: string, date = new Date()): string {
   const slug = slugify(question, 60);
   return `${formatDate(date)}-${slug}.md`;
+}
+
+export async function resolveAskOutputPath(
+  outputDir: string,
+  question: string,
+  date = new Date(),
+): Promise<{ filename: string; filePath: string }> {
+  const baseFilename = generateAskFilename(question, date);
+  const ext = ".md";
+  const stem = baseFilename.slice(0, -ext.length);
+
+  let filename = baseFilename;
+  let filePath = join(outputDir, filename);
+  let suffix = 2;
+
+  while (await Bun.file(filePath).exists()) {
+    filename = `${stem}-${suffix}${ext}`;
+    filePath = join(outputDir, filename);
+    suffix++;
+  }
+
+  return { filename, filePath };
 }
 
 export function buildAskFrontmatter(
@@ -163,10 +195,11 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   await ensureResearcherAgent(vault, options.model);
 
-  console.log("Researching...\n");
+  console.error("Researching...\n");
 
+  const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
   const claudeArgs = [
-    "claude",
+    claudeBin,
     "-p", question,
     "--agent", "researcher",
     "--permission-mode", "bypassPermissions",
@@ -176,15 +209,24 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  const proc = Bun.spawn(claudeArgs, {
-    stdout: "pipe",
-    stderr: options.verbose ? "inherit" : "pipe",
-    cwd: vault,
-  });
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(claudeArgs, {
+      stdout: "pipe",
+      stderr: options.verbose ? "inherit" : "pipe",
+      cwd: vault,
+    });
+  } catch (err) {
+    die(
+      err instanceof Error && err.message.includes('Executable not found')
+        ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
+        : `failed to start research agent: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   const [output, stderrOutput, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(""),
+    readStream(proc.stdout),
+    readStream(proc.stderr),
     proc.exited,
   ]);
 
@@ -213,8 +255,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const outputDir = join(vault, "output", "asks");
   await mkdir(outputDir, { recursive: true });
 
-  const filename = generateAskFilename(question, now);
-  const filePath = join(outputDir, filename);
+  const { filename, filePath } = await resolveAskOutputPath(outputDir, question, now);
   await Bun.write(filePath, fileContent);
 
   const sourceNames = sources.map((s) => s.replace(/^\[\[/, "").replace(/\]\]$/, ""));

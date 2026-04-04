@@ -21,8 +21,12 @@ export async function run(args: string[], config: Config): Promise<void> {
     const glob = new Bun.Glob("*.md");
     const files: string[] = [];
 
-    for await (const path of glob.scan({ cwd: dir, absolute: false })) {
-      files.push(path);
+    try {
+      for await (const path of glob.scan({ cwd: dir, absolute: false })) {
+        files.push(path);
+      }
+    } catch {
+      continue;
     }
 
     if (files.length === 0) continue;

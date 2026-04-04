@@ -114,6 +114,10 @@ export async function fileOutput(
   const targetPath = join(targetDir, sourceName);
   const targetFullPath = join(vault, targetPath);
 
+  if (await Bun.file(targetFullPath).exists()) {
+    die(`target already exists: ${targetPath}`);
+  }
+
   // Build target: preserve content, add status + filed_from
   const targetContent = updateRawFrontmatter(content, {
     status: "unprocessed",
