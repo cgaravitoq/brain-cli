@@ -45,6 +45,7 @@ describe("compile command", () => {
         model: "sonnet",
         noPush: false,
         verbose: false,
+        all: false,
       });
     });
 
@@ -68,18 +69,25 @@ describe("compile command", () => {
       expect(opts.verbose).toBe(true);
     });
 
+    test("parses --all", () => {
+      const opts = parseCompileArgs(["--all"]);
+      expect(opts.all).toBe(true);
+    });
+
     test("parses all flags together", () => {
       const opts = parseCompileArgs([
         "--dry-run",
         "--model", "opus",
         "--no-push",
         "--verbose",
+        "--all",
       ]);
       expect(opts).toEqual({
         dryRun: true,
         model: "opus",
         noPush: true,
         verbose: true,
+        all: true,
       });
     });
   });
