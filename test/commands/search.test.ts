@@ -241,4 +241,75 @@ describe("search command", () => {
     expect(rawIdx).not.toBe(-1);
     expect(wikiIdx).toBeLessThan(rawIdx);
   });
+
+  // --- Tag filtering tests ---
+
+  test("--tag filters by single tag", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "agents.md"),
+      "---\ntitle: \"Agents\"\ncreated: 2026-04-03\ntags: [agents, devops]\n---\n\nAgent orchestration\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "cooking.md"),
+      "---\ntitle: \"Cooking\"\ncreated: 2026-04-03\ntags: [recipes]\n---\n\nAgent orchestration in the kitchen\n",
+    );
+
+    await run(["--tag", "agents", "orchestration"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("agents.md");
+    expect(output).not.toContain("cooking.md");
+  });
+
+  test("--tag comma-separated uses OR logic", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "devops.md"),
+      "---\ntitle: \"DevOps\"\ncreated: 2026-04-03\ntags: [devops]\n---\n\nshared keyword\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "agents.md"),
+      "---\ntitle: \"Agents\"\ncreated: 2026-04-03\ntags: [agents]\n---\n\nshared keyword\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "cooking.md"),
+      "---\ntitle: \"Cooking\"\ncreated: 2026-04-03\ntags: [recipes]\n---\n\nshared keyword\n",
+    );
+
+    await run(["--tag", "agents,devops", "shared"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("devops.md");
+    expect(output).toContain("agents.md");
+    expect(output).not.toContain("cooking.md");
+  });
+
+  test("no --tag returns all matches", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "a.md"),
+      "---\ntitle: \"A\"\ncreated: 2026-04-03\ntags: [agents]\n---\n\nshared keyword\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "b.md"),
+      "---\ntitle: \"B\"\ncreated: 2026-04-03\ntags: [recipes]\n---\n\nshared keyword\n",
+    );
+
+    await run(["shared"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("a.md");
+    expect(output).toContain("b.md");
+  });
+
+  test("--tag skips file without frontmatter", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "with-fm.md"),
+      "---\ntitle: \"Tagged\"\ncreated: 2026-04-03\ntags: [agents]\n---\n\nshared keyword\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "no-fm.md"),
+      "shared keyword without any frontmatter\n",
+    );
+
+    await run(["--tag", "agents", "shared"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("with-fm.md");
+    expect(output).not.toContain("no-fm.md");
+  });
 });
