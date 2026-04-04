@@ -43,6 +43,8 @@ describe("compile command", () => {
       expect(opts).toEqual({
         dryRun: false,
         model: "sonnet",
+        extractModel: null,
+        writeModel: null,
         noPush: false,
         verbose: false,
         all: false,
@@ -85,6 +87,8 @@ describe("compile command", () => {
       expect(opts).toEqual({
         dryRun: true,
         model: "opus",
+        extractModel: null,
+        writeModel: null,
         noPush: true,
         verbose: true,
         all: true,
