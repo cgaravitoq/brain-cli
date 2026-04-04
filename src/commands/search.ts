@@ -64,34 +64,54 @@ export async function run(args: string[], config: Config): Promise<void> {
       if (!hasMatch) continue;
     }
 
-    const contentLower = content.toLowerCase();
+    // Parse frontmatter once for AND-matching and scoring
+    const parsed = parseFrontmatter(content);
+    const body = parsed?.body ?? content;
+    const title = parsed?.frontmatter.title ?? "";
+    const tags = parsed?.frontmatter.tags ?? "";
+    const aliases = parsed?.frontmatter.aliases ?? "";
 
-    // AND semantics: every term must appear somewhere in the content
-    const exactMatch = terms.every((term) => contentLower.includes(term));
+    // Build searchable text from body + structured frontmatter fields only
+    // This prevents false positives from YAML keys like "title:", "tags:", etc.
+    const searchableText = [body, title, tags, aliases]
+      .join("\n")
+      .toLowerCase();
+
+    // AND semantics: every term must appear somewhere in the searchable text
+    const exactMatch = terms.every((term) => searchableText.includes(term));
 
     if (!exactMatch) {
-      // Fallback: try stemmed matching — stem(query term) vs stem(content words)
-      const contentWords = contentLower.split(/[^a-z]+/).filter((w) => w.length > 0);
-      const stemmedContent = new Set(contentWords.map((w) => stem(w)));
+      // Fallback: try stemmed matching — stem(query term) vs stem(searchable words)
+      const searchableWords = searchableText.split(/[^a-z]+/).filter((w) => w.length > 0);
+      const stemmedContent = new Set(searchableWords.map((w) => stem(w)));
       const stemmedMatch = terms.every((t) => stemmedContent.has(stem(t)));
       if (!stemmedMatch) continue;
     }
 
     // Compute relevance score
     let score = 0;
-    const parsed = parseFrontmatter(content);
 
     // Title match: +10 if any term appears in frontmatter title
-    if (parsed?.frontmatter.title) {
-      const titleLower = parsed.frontmatter.title.toLowerCase();
+    if (title) {
+      const titleLower = title.toLowerCase();
       if (terms.some((t) => titleLower.includes(t))) {
         score += 10;
       }
     }
 
+    // Alias match: +8 per alias that contains any search term
+    if (aliases) {
+      const parsedAliases = parseTags(aliases);
+      for (const alias of parsedAliases) {
+        if (terms.some((t) => alias.includes(t))) {
+          score += 8;
+        }
+      }
+    }
+
     // Tag match: +5 if any term appears in frontmatter tags
-    if (parsed?.frontmatter.tags) {
-      const tagsLower = parsed.frontmatter.tags.toLowerCase();
+    if (tags) {
+      const tagsLower = tags.toLowerCase();
       if (terms.some((t) => tagsLower.includes(t))) {
         score += 5;
       }
@@ -102,8 +122,7 @@ export async function run(args: string[], config: Config): Promise<void> {
       score += 3;
     }
 
-    // Body occurrences: +1 each, capped at 5
-    const body = parsed?.body ?? content;
+    // Body occurrences: +1 each, capped at 5 (uses body only, not raw frontmatter)
     const bodyLower = body.toLowerCase();
     let bodyOccurrences = 0;
     for (const term of terms) {
