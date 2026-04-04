@@ -222,6 +222,59 @@ Only `asks/` is in scope for this PRD. The structure prepares for future output 
 - Error handling: `CLIError` + `die()` from `src/errors.ts`
 - Testing: real temp dirs, no mocks, mirrors `test/` conventions
 
+---
+
+## TODO: `--stdout` flag for agent-consumable output
+
+**Priority:** High — unlocks agent-to-knowledge-base queries across all projects.
+
+### Problem
+
+The `-p` / `--print` flag outputs the answer to stdout but the CLI still prints metadata to stderr (`Researching...`, `Consulted N articles`, `Summary: ...`). This is fine for humans but noisy for LLM agents that want to capture clean markdown via `$(brain ask ...)`.
+
+### Proposed solution
+
+Add a `--stdout` flag that outputs ONLY the raw markdown body to stdout. No frontmatter, no stderr logging, nothing except the answer.
+
+```bash
+# Human use (current, unchanged)
+brain ask "question"                    # Writes file + prints summary
+brain ask -p "question"                 # Prints to stdout + metadata to stderr
+
+# Agent use (new)
+brain ask --stdout "question"           # ONLY markdown body to stdout. Zero stderr.
+```
+
+### Implementation
+
+In `src/commands/ask.ts`:
+1. Add `--stdout` flag to `parseArgs` (`{ type: "boolean", default: false }`)
+2. When `--stdout` is true:
+   - Suppress all `console.error()` calls (no "Researching...", no "Consulted N articles", no "Summary:")
+   - Do not write the output file
+   - Print only the raw `body` (Claude's response) to `console.log(body)` — no frontmatter wrapping
+3. `--stdout` implies `--print` behavior (no file saved) but goes further (no stderr)
+
+### Use case: AI agents querying the knowledge base
+
+```bash
+# In a coding agent's workflow (Claude Code, OpenCode, Codex):
+CONTEXT=$(brain ask --stdout "what are the Terraform module conventions")
+# $CONTEXT is clean markdown the agent can use as context for its next action
+```
+
+This is useful for any project where agents work on a codebase and need to query team knowledge. The TFM project (4-person team) is the first target — agents working on Terraform/Python can query architecture decisions, conventions, and past discussions stored in Obsidian.
+
+### Acceptance criteria
+
+- [ ] `brain ask --stdout "question"` outputs only markdown to stdout
+- [ ] Zero output to stderr when `--stdout` is used
+- [ ] No file is written to `output/asks/` when `--stdout` is used
+- [ ] Exit code 0 on success, non-zero on failure (agent can check `$?`)
+- [ ] Works with `--model` flag (`brain ask --stdout --model opus "question"`)
+
+---
+
 ## Out of scope
 
 - `brain report` (longer, structured multi-section documents)

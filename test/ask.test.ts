@@ -8,6 +8,7 @@ import {
   resolveAskOutputPath,
   buildAskFrontmatter,
   extractSources,
+  extractRelated,
   extractTitle,
   extractSummary,
   ensureResearcherAgent,
@@ -52,6 +53,26 @@ describe("parseAskArgs", () => {
   test("parses --verbose flag", () => {
     const { options } = parseAskArgs(["--verbose", "test question"]);
     expect(options.verbose).toBe(true);
+  });
+
+  test("parses --stdout flag", () => {
+    const { options, question } = parseAskArgs(["--stdout", "what is RAG"]);
+    expect(options.stdout).toBe(true);
+    expect(options.printOnly).toBe(true); // --stdout implies --print
+    expect(options.verbose).toBe(false); // --stdout suppresses verbose
+    expect(question).toBe("what is RAG");
+  });
+
+  test("--stdout overrides --verbose", () => {
+    const { options } = parseAskArgs(["--stdout", "--verbose", "test question"]);
+    expect(options.stdout).toBe(true);
+    expect(options.verbose).toBe(false);
+  });
+
+  test("--stdout can combine with --model", () => {
+    const { options } = parseAskArgs(["--stdout", "--model", "opus", "test question"]);
+    expect(options.stdout).toBe(true);
+    expect(options.model).toBe("opus");
   });
 
   test("throws on empty question", () => {
@@ -120,6 +141,7 @@ describe("buildAskFrontmatter", () => {
       "how does X work?",
       "How Does X Work",
       ["[[article-one]]", "[[article-two]]"],
+      [],
       new Date(2026, 3, 4),
     );
     expect(fm).toContain("title:");
@@ -133,12 +155,29 @@ describe("buildAskFrontmatter", () => {
   });
 
   test("builds frontmatter without sources", () => {
-    const fm = buildAskFrontmatter("test", "Test", [], new Date(2026, 3, 4));
+    const fm = buildAskFrontmatter("test", "Test", [], [], new Date(2026, 3, 4));
     expect(fm).not.toContain("sources:");
   });
 
+  test("builds frontmatter with related", () => {
+    const fm = buildAskFrontmatter(
+      "how does X work?",
+      "How Does X Work",
+      ["[[article-one]]"],
+      ["[[related-concept]]"],
+      new Date(2026, 3, 4),
+    );
+    expect(fm).toContain("related:");
+    expect(fm).toContain("[[related-concept]]");
+  });
+
+  test("omits related when empty", () => {
+    const fm = buildAskFrontmatter("test", "Test", [], [], new Date(2026, 3, 4));
+    expect(fm).not.toContain("related:");
+  });
+
   test("escapes quotes in title", () => {
-    const fm = buildAskFrontmatter('what is "RAG"?', 'What Is "RAG"', [], new Date(2026, 3, 4));
+    const fm = buildAskFrontmatter('what is "RAG"?', 'What Is "RAG"', [], [], new Date(2026, 3, 4));
     expect(fm).toContain('\\"RAG\\"');
   });
 });
@@ -171,6 +210,50 @@ Text.
 - [[only-source]] — the only one`;
     const sources = extractSources(body);
     expect(sources).toEqual(["[[only-source]]"]);
+  });
+});
+
+describe("extractRelated", () => {
+  test("extracts wikilinks from body not in sources", () => {
+    const body = `# Answer
+
+This relates to [[concept-a]] and [[concept-b]].
+
+## Sources consulted
+- [[concept-a]] — main source
+`;
+    const sources = ["[[concept-a]]"];
+    const related = extractRelated(body, sources);
+    expect(related).toEqual(["[[concept-b]]"]);
+  });
+
+  test("returns empty when all links are in sources", () => {
+    const body = `# Answer
+
+Text referencing [[concept-a]].
+
+## Sources consulted
+- [[concept-a]] — main source
+`;
+    const related = extractRelated(body, ["[[concept-a]]"]);
+    expect(related).toEqual([]);
+  });
+
+  test("deduplicates related links", () => {
+    const body = `# Answer
+
+See [[concept-b]] for details. Also check [[concept-b]] again.
+
+## Sources consulted
+- [[concept-a]] — main source
+`;
+    const related = extractRelated(body, ["[[concept-a]]"]);
+    expect(related).toEqual(["[[concept-b]]"]);
+  });
+
+  test("returns empty when no wikilinks in body", () => {
+    const body = "# Answer\n\nJust plain text.";
+    expect(extractRelated(body, [])).toEqual([]);
   });
 });
 
@@ -271,5 +354,118 @@ describe("run", () => {
 
     expect(logs).toEqual(["# Answer\n\nBody text."]);
     expect(errors.join("\n")).toContain("Researching...");
+  });
+
+  test("--stdout mode outputs only markdown, zero stderr, no file written", async () => {
+    const fakeClaude = await createFakeExecutable(
+      "claude",
+      "#!/bin/sh\nprintf '# Answer\\n\\nClean markdown body.\\n'\n",
+    );
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+    try {
+      await run(["--stdout", "test question"], vault.config);
+    } finally {
+      await fakeClaude.cleanup();
+    }
+
+    // Only the raw markdown should be on stdout
+    expect(logs).toEqual(["# Answer\n\nClean markdown body."]);
+    // Zero stderr output
+    expect(errors).toEqual([]);
+
+    // No file should be written
+    const outputDir = join(vault.config.vault, "output", "asks");
+    const glob = new Bun.Glob("*.md");
+    const files: string[] = [];
+    try {
+      for await (const f of glob.scan({ cwd: outputDir, absolute: false })) {
+        files.push(f);
+      }
+    } catch {
+      // Directory may not exist, that's expected
+    }
+    expect(files).toHaveLength(0);
+  });
+
+  test("--stdout with --model still respects model", async () => {
+    const fakeClaude = await createFakeExecutable(
+      "claude",
+      "#!/bin/sh\nprintf '# Answer\\n\\nBody.\\n'\n",
+    );
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+    try {
+      await run(["--stdout", "--model", "opus", "test question"], vault.config);
+    } finally {
+      await fakeClaude.cleanup();
+    }
+
+    // Verify model was passed to agent config
+    const agentContent = await Bun.file(
+      join(vault.config.vault, ".claude", "agents", "researcher.md"),
+    ).text();
+    expect(agentContent).toContain("model: opus");
+
+    // Still only markdown on stdout, no stderr
+    expect(logs).toEqual(["# Answer\n\nBody."]);
+    expect(errors).toEqual([]);
+  });
+
+  test("default mode writes file with related field in frontmatter", async () => {
+    const fakeClaude = await createFakeExecutable(
+      "claude",
+      `#!/bin/sh
+printf '# Answer\\n\\nThis relates to [[other-concept]].\\n\\n## Sources consulted\\n- [[main-source]] — main ref\\n'`,
+    );
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+    try {
+      await run(["test question"], vault.config);
+    } finally {
+      await fakeClaude.cleanup();
+    }
+
+    // Check that the file was written with related field
+    const outputDir = join(vault.config.vault, "output", "asks");
+    const glob = new Bun.Glob("*.md");
+    const files: string[] = [];
+    for await (const f of glob.scan({ cwd: outputDir, absolute: false })) {
+      files.push(f);
+    }
+    expect(files).toHaveLength(1);
+
+    const content = await Bun.file(join(outputDir, files[0]!)).text();
+    expect(content).toContain("sources:");
+    expect(content).toContain("[[main-source]]");
+    expect(content).toContain("related:");
+    expect(content).toContain("[[other-concept]]");
   });
 });

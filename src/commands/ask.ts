@@ -41,6 +41,7 @@ Your output must include:
 
 export interface AskOptions {
   printOnly: boolean;
+  stdout: boolean;
   model: string;
   verbose: boolean;
 }
@@ -60,6 +61,7 @@ export function parseAskArgs(args: string[]): { options: AskOptions; question: s
     args,
     options: {
       print: { type: "boolean", short: "p", default: false },
+      stdout: { type: "boolean", default: false },
       model: { type: "string", default: "sonnet" },
       verbose: { type: "boolean", default: false },
     },
@@ -72,11 +74,14 @@ export function parseAskArgs(args: string[]): { options: AskOptions; question: s
     die("usage: brain ask <question>");
   }
 
+  const stdoutMode = (values.stdout as boolean) ?? false;
+
   return {
     options: {
-      printOnly: (values.print as boolean) ?? false,
+      printOnly: stdoutMode || ((values.print as boolean) ?? false),
+      stdout: stdoutMode,
       model: (values.model as string) ?? "sonnet",
-      verbose: (values.verbose as boolean) ?? false,
+      verbose: stdoutMode ? false : ((values.verbose as boolean) ?? false),
     },
     question,
   };
@@ -133,6 +138,7 @@ export function buildAskFrontmatter(
   question: string,
   title: string,
   sources: string[],
+  related: string[],
   date: Date,
 ): string {
   const esc = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -145,6 +151,10 @@ export function buildAskFrontmatter(
     lines.push("sources:");
     for (const s of sources) lines.push(`  - ${esc(s)}`);
   }
+  if (related.length > 0) {
+    lines.push("related:");
+    for (const r of related) lines.push(`  - ${esc(r)}`);
+  }
   lines.push("---");
   return lines.join("\n");
 }
@@ -155,11 +165,32 @@ export function extractSources(body: string): string[] {
   const section = sourcesMatch[1]!;
   const links: string[] = [];
   const linkPattern = /\[\[([^\]]+)\]\]/g;
-  let match;
-  while ((match = linkPattern.exec(section)) !== null) {
-    links.push(`[[${match[1]}]]`);
+  let m: RegExpExecArray | null;
+  while ((m = linkPattern.exec(section)) !== null) {
+    links.push(`[[${m[1]}]]`);
   }
   return links;
+}
+
+/** Extract wikilinks from the body that aren't in the sources list (related articles) */
+export function extractRelated(body: string, sources: string[]): string[] {
+  const sourceSet = new Set(sources);
+  const linkPattern = /\[\[([^\]]+)\]\]/g;
+
+  // Strip the sources section to avoid double-counting
+  const bodyWithoutSources = body.replace(/## Sources consulted\n[\s\S]*?(?:\n## |$)/i, "");
+
+  const related: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = linkPattern.exec(bodyWithoutSources)) !== null) {
+    const link = `[[${m[1]}]]`;
+    if (!sourceSet.has(link) && !seen.has(link)) {
+      related.push(link);
+      seen.add(link);
+    }
+  }
+  return related;
 }
 
 export function extractTitle(question: string): string {
@@ -189,13 +220,19 @@ export function extractSummary(body: string, maxLength = 200): string {
   return paragraph.slice(0, maxLength).replace(/\s+\S*$/, "") + "...";
 }
 
+/** Log to stderr, unless suppressed (--stdout mode) */
+function log(silent: boolean, ...args: unknown[]): void {
+  if (!silent) console.error(...args);
+}
+
 export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseAskArgs(args);
   const { vault } = config;
+  const silent = options.stdout;
 
   await ensureResearcherAgent(vault, options.model);
 
-  console.error("Researching...\n");
+  log(silent, "Researching...\n");
 
   const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
   const claudeArgs = [
@@ -231,7 +268,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   ]);
 
   if (exitCode !== 0) {
-    if (stderrOutput) console.error(stderrOutput);
+    if (stderrOutput && !silent) console.error(stderrOutput);
     die(`research failed (exit code ${exitCode})`);
   }
 
@@ -241,15 +278,24 @@ export async function run(args: string[], config: Config): Promise<void> {
     die("agent returned empty response");
   }
 
+  // --stdout: raw markdown only, zero stderr, no file written
+  if (options.stdout) {
+    console.log(body);
+    return;
+  }
+
+  // -p / --print: markdown to stdout, progress to stderr, no file written
   if (options.printOnly) {
     console.log(body);
     return;
   }
 
+  // Default: write file + print summary
   const now = new Date();
   const title = extractTitle(question);
   const sources = extractSources(body);
-  const frontmatter = buildAskFrontmatter(question, title, sources, now);
+  const related = extractRelated(body, sources);
+  const frontmatter = buildAskFrontmatter(question, title, sources, related, now);
   const fileContent = `${frontmatter}\n\n${body}\n`;
 
   const outputDir = join(vault, "output", "asks");
