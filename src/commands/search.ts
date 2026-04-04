@@ -4,6 +4,7 @@ import type { Config } from "../types";
 import { die } from "../errors";
 import { stem } from "../search/stemmer";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 export interface SearchResult {
   path: string;
@@ -36,12 +37,11 @@ export async function searchVault(
 
   if (terms.length === 0) return [];
 
-  const glob = new Bun.Glob("**/*.md");
   const results: SearchResult[] = [];
 
-  for await (const path of glob.scan({ cwd: vault })) {
+  for await (const path of globFiles("**/*.md", vault)) {
     const fullPath = join(vault, path);
-    const content = await Bun.file(fullPath).text();
+    const content = await readTextFile(fullPath);
 
     // Tag filtering: when --tag is active, skip files that don't match
     if (tagFilter) {

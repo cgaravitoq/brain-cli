@@ -15,6 +15,8 @@ import {
   computeFileHash,
   type CompileManifest,
 } from "../compile/manifest";
+import { readTextFile, writeTextFile, globFiles } from "../fs";
+import { spawnCapture } from "../spawn";
 
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
@@ -100,16 +102,6 @@ export interface CompileOptions {
   all: boolean;
 }
 
-type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
-
-function readStream(stream: SubprocessStream | undefined): Promise<string> {
-  if (!stream || typeof stream === "number") {
-    return Promise.resolve("");
-  }
-
-  return new Response(stream).text();
-}
-
 export function parseCompileArgs(args: string[]): CompileOptions {
   const { values } = parseArgs({
     args,
@@ -148,11 +140,10 @@ export async function scanUnprocessed(vault: string): Promise<UnprocessedFile[]>
 
   for (const rawDir of rawDirs) {
     const dir = join(vault, rawDir);
-    const glob = new Bun.Glob("*.md");
 
     try {
-      for await (const path of glob.scan({ cwd: dir, absolute: false })) {
-        const content = await Bun.file(join(dir, path)).text();
+      for await (const path of globFiles("*.md", dir)) {
+        const content = await readTextFile(join(dir, path));
         const parsed = parseFrontmatter(content);
         if (parsed?.frontmatter.status === "processed") continue;
         const title = parsed?.frontmatter.title || path.replace(/\.md$/, "");
@@ -169,13 +160,12 @@ export async function scanUnprocessed(vault: string): Promise<UnprocessedFile[]>
 
 export async function scanWikiInventory(vault: string): Promise<WikiArticle[]> {
   const wikiDir = join(vault, "wiki");
-  const glob = new Bun.Glob("**/*.md");
   const articles: WikiArticle[] = [];
 
   try {
-    for await (const relPath of glob.scan({ cwd: wikiDir, absolute: false })) {
+    for await (const relPath of globFiles("**/*.md", wikiDir)) {
       const fullPath = join(wikiDir, relPath);
-      const content = await Bun.file(fullPath).text();
+      const content = await readTextFile(fullPath);
       const parsed = parseFrontmatter(content);
 
       const filename = relPath.replace(/\.md$/, "").split("/").pop() ?? relPath;
@@ -216,7 +206,7 @@ tools:
 ${COMPILER_SYSTEM_PROMPT}`;
 
   await mkdir(agentDir, { recursive: true });
-  await Bun.write(agentPath, content);
+  await writeTextFile(agentPath, content);
 
   return agentPath;
 }
@@ -265,7 +255,7 @@ tools:
 ${EXTRACTOR_SYSTEM_PROMPT}`;
 
   await mkdir(agentDir, { recursive: true });
-  await Bun.write(agentPath, content);
+  await writeTextFile(agentPath, content);
 
   return agentPath;
 }
@@ -397,7 +387,7 @@ export async function filterByManifest(
 
   for (const file of files) {
     const fullPath = join(vault, file.path);
-    const content = await Bun.file(fullPath).text();
+    const content = await readTextFile(fullPath);
     const hash = computeFileHash(content);
     const entry = manifest.compiled[file.path];
 
@@ -424,7 +414,7 @@ export async function updateManifest(
 
   for (const file of files) {
     const fullPath = join(vault, file.path);
-    const content = await Bun.file(fullPath).text();
+    const content = await readTextFile(fullPath);
     const hash = computeFileHash(content);
     updated.compiled[file.path] = { hash, compiledAt: now };
   }
@@ -463,28 +453,19 @@ async function spawnClaude(
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(claudeArgs, {
-      stdout: captureStdout ? "pipe" : (verbose ? "inherit" : "pipe"),
-      stderr: verbose ? "inherit" : "pipe",
+    return await spawnCapture(claudeArgs, {
       cwd: vault,
+      stdoutMode: captureStdout ? "pipe" : (verbose ? "inherit" : "pipe"),
+      stderrMode: verbose ? "inherit" : "pipe",
     });
   } catch (err) {
     die(
-      err instanceof Error && err.message.includes('Executable not found')
+      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
         : `failed to start ${agent} agent: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
-
-  return { exitCode, stdout, stderr };
 }
 
 export function parseExtractionPlan(output: string): ExtractionPlan | null {

@@ -1,9 +1,11 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import type { Config, RawConfig } from "./types";
 import { expandHome } from "./utils";
 import { die } from "./errors";
+import { readTextFile, writeTextFile, fileExists } from "./fs";
 
 export function getConfigDir(): string {
   if (process.env.BRAIN_CONFIG_DIR) return process.env.BRAIN_CONFIG_DIR;
@@ -17,13 +19,12 @@ export function getConfigPath(): string {
 
 export async function loadStoredConfig(): Promise<Config | null> {
   const configPath = getConfigPath();
-  const file = Bun.file(configPath);
 
-  if (!(await file.exists())) {
+  if (!(await fileExists(configPath))) {
     return null;
   }
 
-  const raw: RawConfig = await file.json();
+  const raw: RawConfig = JSON.parse(await readTextFile(configPath));
   if (!raw.vault) {
     die("Config is missing 'vault' path. Run: brain config <path>");
   }
@@ -44,21 +45,25 @@ export async function saveConfig(vault: string): Promise<void> {
   const configPath = getConfigPath();
   await mkdir(getConfigDir(), { recursive: true });
   const raw: RawConfig = { vault };
-  await Bun.write(configPath, JSON.stringify(raw, null, 2) + "\n");
+  await writeTextFile(configPath, JSON.stringify(raw, null, 2) + "\n");
 }
 
 async function initConfig(): Promise<Config> {
   process.stdout.write("Enter your vault path: ");
 
-  const reader = Bun.stdin.stream().getReader();
-  const { value } = await reader.read();
-  reader.releaseLock();
+  const vault = await new Promise<string>((resolve) => {
+    const rl = createInterface({ input: process.stdin });
+    let answered = false;
+    rl.once("line", (line) => {
+      answered = true;
+      rl.close();
+      resolve(line.trim());
+    });
+    rl.once("close", () => {
+      if (!answered) resolve("");
+    });
+  });
 
-  if (!value) {
-    die("No vault path provided.");
-  }
-
-  const vault = new TextDecoder().decode(value).trim();
   if (!vault) {
     die("No vault path provided.");
   }

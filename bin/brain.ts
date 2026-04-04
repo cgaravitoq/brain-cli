@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { CLIError } from "../src/errors";
 import { loadConfig, loadStoredConfig } from "../src/config";
 import { run as noteRun } from "../src/commands/note";
@@ -31,7 +33,7 @@ const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "co
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
-    args: Bun.argv.slice(2),
+    args: process.argv.slice(2),
     options: {
       title: { type: "string", short: "t" },
       editor: { type: "boolean", short: "e" },
@@ -48,9 +50,8 @@ async function main(): Promise<void> {
   }
 
   if (values.version) {
-    const pkg = await Bun.file(
-      new URL("../package.json", import.meta.url),
-    ).json();
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { version: string };
     console.log(`brain v${pkg.version}`);
     return;
   }
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
 
     // Commands with custom flag parsing need raw args
     const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas"]);
-    await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);
+    await handler(rawArgCommands.has(subcommand) ? process.argv.slice(3) : subArgs, config);
     return;
   }
 

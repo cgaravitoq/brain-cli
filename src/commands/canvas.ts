@@ -5,6 +5,7 @@ import type { Config } from "../types";
 import { die } from "../errors";
 import { parseFrontmatter } from "../frontmatter";
 import { slugify, formatDate } from "../utils";
+import { readTextFile, writeTextFile, globFiles } from "../fs";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 
@@ -71,9 +72,8 @@ export async function findMatchingArticles(
 ): Promise<MatchedArticle[]> {
   const lowerTopic = topic.toLowerCase();
   const matches: MatchedArticle[] = [];
-  const glob = new Bun.Glob("**/*.md");
 
-  for await (const relPath of glob.scan({ cwd: vault, absolute: false })) {
+  for await (const relPath of globFiles("**/*.md", vault)) {
     const stem = relPath
       .replace(/\.md$/, "")
       .split("/")
@@ -88,7 +88,7 @@ export async function findMatchingArticles(
 
     // Check frontmatter title match
     try {
-      const content = await Bun.file(join(vault, relPath)).text();
+      const content = await readTextFile(join(vault, relPath));
       const parsed = parseFrontmatter(content);
       if (parsed?.frontmatter.title) {
         const title = parsed.frontmatter.title.toLowerCase();
@@ -132,9 +132,8 @@ export async function buildStemMap(
   vault: string,
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const glob = new Bun.Glob("**/*.md");
 
-  for await (const relPath of glob.scan({ cwd: vault, absolute: false })) {
+  for await (const relPath of globFiles("**/*.md", vault)) {
     const stem = relPath
       .replace(/\.md$/, "")
       .split("/")
@@ -174,7 +173,7 @@ export async function collectNodes(
 
     for (const article of currentLevel) {
       try {
-        const content = await Bun.file(join(vault, article.path)).text();
+        const content = await readTextFile(join(vault, article.path));
         const parsed = parseFrontmatter(content);
 
         // Get wikilink targets
@@ -328,7 +327,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   for (const [, articles] of nodesByDepth) {
     for (const article of articles) {
       try {
-        const content = await Bun.file(join(vault, article.path)).text();
+        const content = await readTextFile(join(vault, article.path));
         const parsed = parseFrontmatter(content);
         const wikilinks = extractWikilinksFromContent(content);
         const related = parsed
@@ -356,7 +355,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const outputPath = join(outputDir, filename);
 
   await mkdir(outputDir, { recursive: true });
-  await Bun.write(outputPath, JSON.stringify(canvas, null, 2));
+  await writeTextFile(outputPath, JSON.stringify(canvas, null, 2));
 
   const relOutput = join("output", "canvas", filename);
   console.log(

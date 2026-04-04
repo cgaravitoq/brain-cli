@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Config } from "../types";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 interface Category {
   label: string;
@@ -18,11 +19,10 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   for (const cat of CATEGORIES) {
     const dir = join(config.vault, "raw", cat.dir);
-    const glob = new Bun.Glob("*.md");
     const files: string[] = [];
 
     try {
-      for await (const path of glob.scan({ cwd: dir, absolute: false })) {
+      for await (const path of globFiles("*.md", dir)) {
         files.push(path);
       }
     } catch {
@@ -35,7 +35,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     const unprocessed: { file: string; title: string }[] = [];
 
     for (const file of files) {
-      const content = await Bun.file(join(dir, file)).text();
+      const content = await readTextFile(join(dir, file));
       const parsed = parseFrontmatter(content);
       const status = parsed?.frontmatter.status;
       if (status === "processed") continue;

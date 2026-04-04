@@ -5,6 +5,8 @@ import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
 import { extractSources, extractRelated, extractTitle } from "./ask";
+import { writeTextFile, fileExists } from "../fs";
+import { spawnCapture, spawnSyncCapture } from "../spawn";
 
 const CHARTIST_SYSTEM_PROMPT = `You are a data visualization specialist with read access to a Second Brain vault. Your job is to research the vault and produce a chart specification as structured JSON.
 
@@ -54,16 +56,6 @@ export interface ChartOptions {
   stdout: boolean;
   model: string;
   verbose: boolean;
-}
-
-type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
-
-function readStream(stream: SubprocessStream | undefined): Promise<string> {
-  if (!stream || typeof stream === "number") {
-    return Promise.resolve("");
-  }
-
-  return new Response(stream).text();
 }
 
 export interface ChartJson {
@@ -120,7 +112,7 @@ tools:
 ${CHARTIST_SYSTEM_PROMPT}`;
 
   await mkdir(agentDir, { recursive: true });
-  await Bun.write(agentPath, content);
+  await writeTextFile(agentPath, content);
 
   return agentPath;
 }
@@ -142,7 +134,7 @@ export async function resolveChartOutputPath(
   let pngPath = join(outputDir, `${stem}.png`);
   let suffix = 2;
 
-  while ((await Bun.file(mdPath).exists()) || (await Bun.file(pngPath).exists())) {
+  while ((await fileExists(mdPath)) || (await fileExists(pngPath))) {
     stem = `${baseStem}-${suffix}`;
     mdPath = join(outputDir, `${stem}.md`);
     pngPath = join(outputDir, `${stem}.png`);
@@ -232,7 +224,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const silent = options.stdout;
 
   // Check matplotlib availability
-  const check = Bun.spawnSync(["python3", "-c", "import matplotlib"]);
+  const check = spawnSyncCapture(["python3", "-c", "import matplotlib"]);
   if (check.exitCode !== 0) {
     die("matplotlib is required for chart generation. Install with: pip3 install matplotlib");
   }
@@ -253,26 +245,22 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  let proc: ReturnType<typeof Bun.spawn>;
+  let result: Awaited<ReturnType<typeof spawnCapture>>;
   try {
-    proc = Bun.spawn(claudeArgs, {
-      stdout: "pipe",
-      stderr: options.verbose ? "inherit" : "pipe",
+    result = await spawnCapture(claudeArgs, {
       cwd: vault,
+      stdoutMode: "pipe",
+      stderrMode: options.verbose ? "inherit" : "pipe",
     });
   } catch (err) {
     die(
-      err instanceof Error && err.message.includes("Executable not found")
+      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
         : `failed to start chart agent: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  const [output, stderrOutput, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
+  const { stdout: output, stderr: stderrOutput, exitCode } = result;
 
   if (exitCode !== 0) {
     if (stderrOutput && !silent) console.error(stderrOutput);
@@ -326,9 +314,9 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   // Write python code to temp file and execute
   const tmpPy = join(outputDir, `${stem}-tmp.py`);
-  await Bun.write(tmpPy, chartSpec.python_code);
+  await writeTextFile(tmpPy, chartSpec.python_code);
 
-  const pyProc = Bun.spawnSync(["python3", tmpPy, pngPath]);
+  const pyProc = spawnSyncCapture(["python3", tmpPy, pngPath]);
 
   // Clean up temp python file
   try {
@@ -344,7 +332,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   }
 
   // Verify PNG was created
-  if (!(await Bun.file(pngPath).exists())) {
+  if (!(await fileExists(pngPath))) {
     die("chart generation did not produce an image");
   }
 
@@ -353,7 +341,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const frontmatter = buildChartFrontmatter(question, title, sources, related, now);
   const body = buildMarkdownWrapper(pngFilename, title, chartSpec.data_table, chartSpec.sources);
   const fileContent = `${frontmatter}\n\n${body}`;
-  await Bun.write(mdPath, fileContent);
+  await writeTextFile(mdPath, fileContent);
 
   const sourceNames = sources.map((s) => s.replace(/^\[\[/, "").replace(/\]\]$/, ""));
   if (sourceNames.length > 0) {

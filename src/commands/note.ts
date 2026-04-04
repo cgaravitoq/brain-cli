@@ -7,6 +7,8 @@ import { generateFilename } from "../utils";
 import { generateFrontmatter } from "../frontmatter";
 import { formatDate } from "../utils";
 import { die } from "../errors";
+import { readTextFile, writeTextFile } from "../fs";
+import { spawnSyncInherited } from "../spawn";
 
 interface NoteOptions {
   title?: string;
@@ -45,7 +47,7 @@ export async function run(
     ? `${frontmatter}\n\n${body}\n`
     : `${frontmatter}\n\n${title}\n`;
 
-  await Bun.write(filepath, content);
+  await writeTextFile(filepath, content);
   console.log(`raw/notes/${filename}`);
 }
 
@@ -55,19 +57,15 @@ async function runEditor(config: Config): Promise<void> {
   const tmpFile = join(tmpDir, "brain-note.md");
 
   try {
-    await Bun.write(tmpFile, "");
+    await writeTextFile(tmpFile, "");
 
-    const proc = Bun.spawnSync([editor, tmpFile], {
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    });
+    const proc = spawnSyncInherited([editor, tmpFile]);
 
     if (proc.exitCode !== 0) {
       die(`Editor exited with code ${proc.exitCode}`);
     }
 
-    const content = (await Bun.file(tmpFile).text()).trim();
+    const content = (await readTextFile(tmpFile)).trim();
     if (!content) {
       console.error("Empty note, nothing saved.");
       return;
@@ -91,7 +89,7 @@ async function runEditor(config: Config): Promise<void> {
       tags: ["raw", "unprocessed"],
     });
 
-    await Bun.write(filepath, `${frontmatter}\n\n${body}\n`);
+    await writeTextFile(filepath, `${frontmatter}\n\n${body}\n`);
     console.log(`raw/notes/${filename}`);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });

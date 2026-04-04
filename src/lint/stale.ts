@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 export interface StaleIssue {
   file: string; // relative path
@@ -13,13 +14,12 @@ export async function checkStale(vault: string): Promise<StaleIssue[]> {
   const now = new Date();
 
   for (const subdir of ["raw/notes", "raw/articles"]) {
-    const glob = new Bun.Glob("*.md");
     const dir = join(vault, subdir);
 
     try {
-      for await (const filename of glob.scan({ cwd: dir })) {
+      for await (const filename of globFiles("*.md", dir)) {
         const path = `${subdir}/${filename}`;
-        const content = await Bun.file(join(vault, path)).text();
+        const content = await readTextFile(join(vault, path));
         const parsed = parseFrontmatter(content);
 
         if (!parsed) continue;

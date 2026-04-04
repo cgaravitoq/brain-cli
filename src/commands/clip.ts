@@ -5,6 +5,7 @@ import { generateFilename, formatDate } from "../utils";
 import { generateFrontmatter } from "../frontmatter";
 import { htmlToMarkdown, extractTitle } from "../html";
 import { die } from "../errors";
+import { writeTextFile } from "../fs";
 
 export async function run(args: string[], config: Config): Promise<void> {
   const url = args[0];
@@ -45,7 +46,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     source: url,
   });
 
-  await Bun.write(filepath, `${frontmatter}\n\n${markdown}\n`);
+  await writeTextFile(filepath, `${frontmatter}\n\n${markdown}\n`);
   console.log(`raw/articles/${filename}`);
 }
 

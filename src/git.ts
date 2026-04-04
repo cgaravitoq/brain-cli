@@ -1,4 +1,5 @@
 import { die } from "./errors";
+import { spawnCapture } from "./spawn";
 
 export interface GitResult {
   exitCode: number;
@@ -6,40 +7,16 @@ export interface GitResult {
   stderr: string;
 }
 
-type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
-
-export function readStream(stream: SubprocessStream | undefined): Promise<string> {
-  if (!stream || typeof stream === "number") {
-    return Promise.resolve("");
-  }
-
-  return new Response(stream).text();
-}
-
 export async function runGit(vault: string, args: string[]): Promise<GitResult> {
-  let proc: ReturnType<typeof Bun.spawn>;
-
   try {
-    proc = Bun.spawn(["git", ...args], {
-      cwd: vault,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    return await spawnCapture(["git", ...args], { cwd: vault });
   } catch (err) {
     die(
-      err instanceof Error && err.message.includes("Executable not found")
+      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "git not found in PATH"
         : `failed to start git: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
-
-  return { exitCode, stdout, stderr };
 }
 
 export async function isGitRepo(vault: string): Promise<boolean> {

@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 export interface FrontmatterIssue {
   file: string; // relative path
@@ -12,10 +13,9 @@ export async function checkFrontmatter(
   vault: string,
 ): Promise<FrontmatterIssue[]> {
   const issues: FrontmatterIssue[] = [];
-  const glob = new Bun.Glob("**/*.md");
 
-  for await (const path of glob.scan({ cwd: vault })) {
-    const content = await Bun.file(join(vault, path)).text();
+  for await (const path of globFiles("**/*.md", vault)) {
+    const content = await readTextFile(join(vault, path));
     const parsed = parseFrontmatter(content);
 
     if (!parsed) {

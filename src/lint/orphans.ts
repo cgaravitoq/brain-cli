@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 export interface OrphanIssue {
   file: string; // relative path of orphaned file
@@ -8,15 +9,13 @@ export interface OrphanIssue {
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 
 export async function checkOrphans(vault: string): Promise<OrphanIssue[]> {
-  const glob = new Bun.Glob("**/*.md");
-
   // Build structures: wiki files with their identifiers, and per-file outbound links
   const wikiFiles: Array<{ path: string; identifiers: Set<string> }> = [];
   // Map from source file -> set of lowercased link targets
   const outboundLinks = new Map<string, Set<string>>();
 
-  for await (const path of glob.scan({ cwd: vault })) {
-    const content = await Bun.file(join(vault, path)).text();
+  for await (const path of globFiles("**/*.md", vault)) {
+    const content = await readTextFile(join(vault, path));
 
     // Collect outbound wikilink targets
     const targets = new Set<string>();

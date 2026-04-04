@@ -4,6 +4,8 @@ import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
+import { writeTextFile, fileExists } from "../fs";
+import { spawnCapture } from "../spawn";
 
 const REPORTER_SYSTEM_PROMPT = `You are a report writer with read access to a Second Brain vault. Your job is to research a topic thoroughly and produce a long-form structured document (2000-5000 words).
 
@@ -48,16 +50,6 @@ export interface ReportOptions {
   stdout: boolean;
   model: string;
   verbose: boolean;
-}
-
-type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
-
-function readStream(stream: SubprocessStream | undefined): Promise<string> {
-  if (!stream || typeof stream === "number") {
-    return Promise.resolve("");
-  }
-
-  return new Response(stream).text();
 }
 
 export function parseReportArgs(args: string[]): { options: ReportOptions; topic: string } {
@@ -106,7 +98,7 @@ tools:
 ${REPORTER_SYSTEM_PROMPT}`;
 
   await mkdir(agentDir, { recursive: true });
-  await Bun.write(agentPath, content);
+  await writeTextFile(agentPath, content);
 
   return agentPath;
 }
@@ -129,7 +121,7 @@ export async function resolveReportOutputPath(
   let filePath = join(outputDir, filename);
   let suffix = 2;
 
-  while (await Bun.file(filePath).exists()) {
+  while (await fileExists(filePath)) {
     filename = `${stem}-${suffix}${ext}`;
     filePath = join(outputDir, filename);
     suffix++;
@@ -250,26 +242,22 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  let proc: ReturnType<typeof Bun.spawn>;
+  let result: Awaited<ReturnType<typeof spawnCapture>>;
   try {
-    proc = Bun.spawn(claudeArgs, {
-      stdout: "pipe",
-      stderr: options.verbose ? "inherit" : "pipe",
+    result = await spawnCapture(claudeArgs, {
       cwd: vault,
+      stdoutMode: "pipe",
+      stderrMode: options.verbose ? "inherit" : "pipe",
     });
   } catch (err) {
     die(
-      err instanceof Error && err.message.includes('Executable not found')
+      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
         : `failed to start report agent: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  const [output, stderrOutput, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
+  const { stdout: output, stderr: stderrOutput, exitCode } = result;
 
   if (exitCode !== 0) {
     if (stderrOutput && !silent) console.error(stderrOutput);
@@ -306,7 +294,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   await mkdir(outputDir, { recursive: true });
 
   const { filename, filePath } = await resolveReportOutputPath(outputDir, topic, now);
-  await Bun.write(filePath, fileContent);
+  await writeTextFile(filePath, fileContent);
 
   const sourceNames = sources.map((s) => s.replace(/^\[\[/, "").replace(/\]\]$/, ""));
   if (sourceNames.length > 0) {

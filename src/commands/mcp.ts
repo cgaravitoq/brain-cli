@@ -1,6 +1,8 @@
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import type { Config } from "../types";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, fileExists, globFiles } from "../fs";
 import { searchVault } from "./search";
 import { getToolDefinitions } from "../mcp/tools";
 import {
@@ -126,13 +128,12 @@ async function handleReadArticle(
   }
 
   const fullPath = join(config.vault, relPath);
-  const file = Bun.file(fullPath);
 
-  if (!(await file.exists())) {
+  if (!(await fileExists(fullPath))) {
     return makeError(id, INVALID_PARAMS, `File not found: ${relPath}`);
   }
 
-  const content = await file.text();
+  const content = await readTextFile(fullPath);
   return makeResponse(id, {
     content: [{ type: "text", text: content }],
   });
@@ -142,12 +143,11 @@ async function handleListConcepts(
   id: number | string,
   config: Config,
 ): Promise<JsonRpcResponse> {
-  const glob = new Bun.Glob("wiki/**/*.md");
   const concepts: { title: string; path: string }[] = [];
 
-  for await (const path of glob.scan({ cwd: config.vault })) {
+  for await (const path of globFiles("wiki/**/*.md", config.vault)) {
     const fullPath = join(config.vault, path);
-    const content = await Bun.file(fullPath).text();
+    const content = await readTextFile(fullPath);
     const parsed = parseFrontmatter(content);
     const title = parsed?.frontmatter.title ?? path;
     concepts.push({ title, path });
@@ -160,24 +160,14 @@ async function handleListConcepts(
 }
 
 export async function run(args: string[], config: Config): Promise<void> {
-  const reader = Bun.stdin.stream().getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const rl = createInterface({ input: process.stdin });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let newlineIdx;
-    while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, newlineIdx).trim();
-      buffer = buffer.slice(newlineIdx + 1);
-      if (line) {
-        const response = await handleMessage(line, config);
-        if (response) {
-          console.log(JSON.stringify(response));
-        }
+  for await (const line of rl) {
+    const trimmed = line.trim();
+    if (trimmed) {
+      const response = await handleMessage(trimmed, config);
+      if (response) {
+        console.log(JSON.stringify(response));
       }
     }
   }

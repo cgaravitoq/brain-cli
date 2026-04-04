@@ -49,11 +49,12 @@ describe("compile manifest", () => {
   describe("loadManifest", () => {
     test("returns empty manifest when file does not exist", async () => {
       const manifest = await loadManifest(vault.config.vault);
-      expect(manifest).toEqual({ lastCompileAt: "", compiled: {} });
+      expect(manifest).toEqual({ version: 1, lastCompileAt: "", compiled: {} });
     });
 
     test("loads valid manifest", async () => {
       const expected: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {
           "raw/notes/test.md": {
@@ -81,7 +82,7 @@ describe("compile manifest", () => {
       );
 
       const manifest = await loadManifest(vault.config.vault);
-      expect(manifest).toEqual({ lastCompileAt: "", compiled: {} });
+      expect(manifest).toEqual({ version: 1, lastCompileAt: "", compiled: {} });
     });
 
     test("returns empty manifest for invalid shape", async () => {
@@ -92,7 +93,7 @@ describe("compile manifest", () => {
       );
 
       const manifest = await loadManifest(vault.config.vault);
-      expect(manifest).toEqual({ lastCompileAt: "", compiled: {} });
+      expect(manifest).toEqual({ version: 1, lastCompileAt: "", compiled: {} });
     });
   });
 
@@ -328,6 +329,7 @@ describe("compile incremental integration", () => {
     ).text();
 
     const manifest: CompileManifest = {
+      version: 1,
       lastCompileAt: "2026-04-03T00:00:00.000Z",
       compiled: {
         "raw/notes/a.md": {
@@ -357,6 +359,7 @@ describe("compile incremental integration", () => {
     ).text();
 
     const manifest: CompileManifest = {
+      version: 1,
       lastCompileAt: "2026-04-03T00:00:00.000Z",
       compiled: {
         "raw/notes/a.md": {

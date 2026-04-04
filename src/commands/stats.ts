@@ -1,12 +1,12 @@
 import { join } from "node:path";
 import type { Config } from "../types";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, globFiles } from "../fs";
 
 async function countFiles(dir: string, pattern = "**/*.md"): Promise<number> {
-  const glob = new Bun.Glob(pattern);
   let count = 0;
   try {
-    for await (const _ of glob.scan({ cwd: dir })) {
+    for await (const _ of globFiles(pattern, dir)) {
       count++;
     }
   } catch {
@@ -16,11 +16,10 @@ async function countFiles(dir: string, pattern = "**/*.md"): Promise<number> {
 }
 
 async function countUnprocessed(dir: string): Promise<number> {
-  const glob = new Bun.Glob("**/*.md");
   let count = 0;
   try {
-    for await (const path of glob.scan({ cwd: dir, absolute: false })) {
-      const content = await Bun.file(join(dir, path)).text();
+    for await (const path of globFiles("**/*.md", dir)) {
+      const content = await readTextFile(join(dir, path));
       const parsed = parseFrontmatter(content);
       if (parsed?.frontmatter.status !== "processed") count++;
     }

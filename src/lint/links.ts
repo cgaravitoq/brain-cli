@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { parseFrontmatter } from "../frontmatter";
+import { readTextFile, writeTextFile, globFiles } from "../fs";
 
 export interface LinkIssue {
   file: string; // relative path
@@ -16,16 +17,15 @@ const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
  */
 async function buildTargetSet(vault: string): Promise<Set<string>> {
   const targets = new Set<string>();
-  const glob = new Bun.Glob("**/*.md");
 
-  for await (const path of glob.scan({ cwd: vault })) {
+  for await (const path of globFiles("**/*.md", vault)) {
     // Add filename without extension
     const basename = path.split("/").pop()!;
     const stem = basename.replace(/\.md$/, "").toLowerCase();
     targets.add(stem);
 
     // Parse frontmatter for title and aliases
-    const content = await Bun.file(join(vault, path)).text();
+    const content = await readTextFile(join(vault, path));
     const parsed = parseFrontmatter(content);
     if (parsed) {
       if (parsed.frontmatter.title) {
@@ -51,10 +51,9 @@ async function buildTargetSet(vault: string): Promise<Set<string>> {
 export async function checkLinks(vault: string): Promise<LinkIssue[]> {
   const targets = await buildTargetSet(vault);
   const issues: LinkIssue[] = [];
-  const glob = new Bun.Glob("**/*.md");
 
-  for await (const path of glob.scan({ cwd: vault })) {
-    const content = await Bun.file(join(vault, path)).text();
+  for await (const path of globFiles("**/*.md", vault)) {
+    const content = await readTextFile(join(vault, path));
     const lines = content.split("\n");
 
     for (let i = 0; i < lines.length; i++) {
@@ -99,7 +98,7 @@ export async function fixBrokenLinks(
 
   for (const [file, fileIssues] of byFile) {
     const fullPath = join(vault, file);
-    let content = await Bun.file(fullPath).text();
+    let content = await readTextFile(fullPath);
 
     // Build a set of broken targets for this file
     const brokenTargets = new Set(
@@ -118,7 +117,7 @@ export async function fixBrokenLinks(
       },
     );
 
-    await Bun.write(fullPath, content);
+    await writeTextFile(fullPath, content);
   }
 
   return fixCount;

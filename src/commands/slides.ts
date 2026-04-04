@@ -5,6 +5,8 @@ import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
 import { extractSources, extractRelated, extractTitle, extractSummary } from "./ask";
+import { writeTextFile, fileExists } from "../fs";
+import { spawnCapture } from "../spawn";
 
 const PRESENTER_SYSTEM_PROMPT = `You are a presenter with read access to a Second Brain vault. Your job is to research a topic and produce a Marp-format markdown slide deck.
 
@@ -47,16 +49,6 @@ export interface SlidesOptions {
   model: string;
   verbose: boolean;
   count: number;
-}
-
-type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
-
-function readStream(stream: SubprocessStream | undefined): Promise<string> {
-  if (!stream || typeof stream === "number") {
-    return Promise.resolve("");
-  }
-
-  return new Response(stream).text();
 }
 
 export function parseSlidesArgs(args: string[]): { options: SlidesOptions; question: string } {
@@ -112,7 +104,7 @@ tools:
 ${PRESENTER_SYSTEM_PROMPT}`;
 
   await mkdir(agentDir, { recursive: true });
-  await Bun.write(agentPath, content);
+  await writeTextFile(agentPath, content);
 
   return agentPath;
 }
@@ -135,7 +127,7 @@ export async function resolveSlidesOutputPath(
   let filePath = join(outputDir, filename);
   let suffix = 2;
 
-  while (await Bun.file(filePath).exists()) {
+  while (await fileExists(filePath)) {
     filename = `${stem}-${suffix}${ext}`;
     filePath = join(outputDir, filename);
     suffix++;
@@ -201,26 +193,22 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.error(`> ${claudeArgs.join(" ")}`);
   }
 
-  let proc: ReturnType<typeof Bun.spawn>;
+  let result: Awaited<ReturnType<typeof spawnCapture>>;
   try {
-    proc = Bun.spawn(claudeArgs, {
-      stdout: "pipe",
-      stderr: options.verbose ? "inherit" : "pipe",
+    result = await spawnCapture(claudeArgs, {
       cwd: vault,
+      stdoutMode: "pipe",
+      stderrMode: options.verbose ? "inherit" : "pipe",
     });
   } catch (err) {
     die(
-      err instanceof Error && err.message.includes('Executable not found')
+      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
         : `failed to start presenter agent: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  const [output, stderrOutput, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    proc.exited,
-  ]);
+  const { stdout: output, stderr: stderrOutput, exitCode } = result;
 
   if (exitCode !== 0) {
     if (stderrOutput && !silent) console.error(stderrOutput);
@@ -257,7 +245,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   await mkdir(outputDir, { recursive: true });
 
   const { filename, filePath } = await resolveSlidesOutputPath(outputDir, question, now);
-  await Bun.write(filePath, fileContent);
+  await writeTextFile(filePath, fileContent);
 
   const sourceNames = sources.map((s) => s.replace(/^\[\[/, "").replace(/\]\]$/, ""));
   if (sourceNames.length > 0) {

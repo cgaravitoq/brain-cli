@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { parseFrontmatter, updateRawFrontmatter } from "../frontmatter";
+import { readTextFile, writeTextFile, fileExists, globFiles } from "../fs";
 
 export interface FileOptions {
   last: boolean;
@@ -46,13 +47,12 @@ export interface UnfiledOutput {
 
 export async function scanUnfiled(vault: string): Promise<UnfiledOutput[]> {
   const outputDir = join(vault, "output");
-  const glob = new Bun.Glob("**/*.md");
   const files: UnfiledOutput[] = [];
 
   try {
-    for await (const path of glob.scan({ cwd: outputDir, absolute: false })) {
+    for await (const path of globFiles("**/*.md", outputDir)) {
       const fullPath = join(outputDir, path);
-      const content = await Bun.file(fullPath).text();
+      const content = await readTextFile(fullPath);
       const parsed = parseFrontmatter(content);
 
       if (parsed?.frontmatter.filed === "true") continue;
@@ -108,13 +108,13 @@ export async function fileOutput(
 ): Promise<string> {
   const targetDir = targetType === "article" ? "raw/articles" : "raw/notes";
   const sourceFullPath = join(vault, output.path);
-  const content = await Bun.file(sourceFullPath).text();
+  const content = await readTextFile(sourceFullPath);
 
   const sourceName = output.path.split("/").pop()!;
   const targetPath = join(targetDir, sourceName);
   const targetFullPath = join(vault, targetPath);
 
-  if (await Bun.file(targetFullPath).exists()) {
+  if (await fileExists(targetFullPath)) {
     die(`target already exists: ${targetPath}`);
   }
 
@@ -125,14 +125,14 @@ export async function fileOutput(
   });
 
   await mkdir(join(vault, targetDir), { recursive: true });
-  await Bun.write(targetFullPath, targetContent);
+  await writeTextFile(targetFullPath, targetContent);
 
   // Mark original as filed
   const updatedSource = updateRawFrontmatter(content, {
     filed: "true",
     filed_to: `"${targetPath}"`,
   });
-  await Bun.write(sourceFullPath, updatedSource);
+  await writeTextFile(sourceFullPath, updatedSource);
 
   return targetPath;
 }

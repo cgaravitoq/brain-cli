@@ -1,8 +1,10 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { readTextFile, writeTextFile, fileExists } from "../fs";
 
 const MANIFEST_DIR = ".brain";
 const MANIFEST_FILE = "compile-manifest.json";
+const MANIFEST_VERSION = 1;
 
 export interface CompiledEntry {
   hash: string;
@@ -10,12 +12,13 @@ export interface CompiledEntry {
 }
 
 export interface CompileManifest {
+  version: number;
   lastCompileAt: string;
   compiled: Record<string, CompiledEntry>;
 }
 
 function emptyManifest(): CompileManifest {
-  return { lastCompileAt: "", compiled: {} };
+  return { version: MANIFEST_VERSION, lastCompileAt: "", compiled: {} };
 }
 
 function manifestPath(vault: string): string {
@@ -24,14 +27,13 @@ function manifestPath(vault: string): string {
 
 export async function loadManifest(vault: string): Promise<CompileManifest> {
   const path = manifestPath(vault);
-  const file = Bun.file(path);
 
-  if (!(await file.exists())) {
+  if (!(await fileExists(path))) {
     return emptyManifest();
   }
 
   try {
-    const data = await file.json();
+    const data = JSON.parse(await readTextFile(path));
 
     // Validate shape
     if (
@@ -41,6 +43,13 @@ export async function loadManifest(vault: string): Promise<CompileManifest> {
       typeof data.compiled !== "object" ||
       data.compiled === null
     ) {
+      console.warn("brain: manifest corrupted, starting fresh");
+      return emptyManifest();
+    }
+
+    // Check version — if missing or outdated, invalidate manifest
+    if (!data.version || data.version < MANIFEST_VERSION) {
+      console.warn("brain: manifest format upgraded, recompiling all files");
       return emptyManifest();
     }
 
@@ -56,12 +65,23 @@ export async function saveManifest(
 ): Promise<void> {
   const dir = join(vault, MANIFEST_DIR);
   await mkdir(dir, { recursive: true });
-  await Bun.write(manifestPath(vault), JSON.stringify(manifest, null, 2) + "\n");
+  await writeTextFile(manifestPath(vault), JSON.stringify(manifest, null, 2) + "\n");
 }
 
 export function computeFileHash(content: string): string {
-  const hash = Bun.hash(content);
-  // Bun.hash returns a number; convert to hex string
-  // Use BigInt for unsigned representation to avoid negative hex values
-  return BigInt.asUintN(64, BigInt(hash)).toString(16);
+  // FNV-1a 64-bit hash
+  const FNV_PRIME = 1099511628211n;
+  const FNV_OFFSET = 14695981039346656037n;
+  const MASK = (1n << 64n) - 1n;
+
+  let hash = FNV_OFFSET;
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(content);
+
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = (hash * FNV_PRIME) & MASK;
+  }
+
+  return hash.toString(16);
 }
