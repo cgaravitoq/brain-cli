@@ -17,9 +17,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain ask <question>     Query the wiki
        brain file               File output → raw
        brain push               Git add, commit & push
+       brain pull               Git pull with rebase
        brain config [path]      View/set vault path`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
       ask: () => import("../src/commands/ask").then((m) => m.run),
       file: () => import("../src/commands/file").then((m) => m.run),
       push: () => import("../src/commands/push").then((m) => m.run),
+      pull: () => import("../src/commands/pull").then((m) => m.run),
     };
 
     const handler = await commands[subcommand]!();
@@ -72,7 +74,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "file", "push"]);
+    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull"]);
     await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);
     return;
   }
