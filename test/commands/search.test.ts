@@ -69,4 +69,63 @@ describe("search command", () => {
     expect(output).toContain("note.md");
     expect(output).toContain("concept.md");
   });
+
+  test("multi-term AND matching — both words in different lines", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "multi.md"),
+      "---\ntitle: \"Multi\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe agent is autonomous.\nIt uses a pattern for routing.\n",
+    );
+
+    await run(["agent", "pattern"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("multi.md");
+  });
+
+  test("multi-term rejects partial match — only one term present", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "partial.md"),
+      "---\ntitle: \"Partial\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe agent is autonomous.\n",
+    );
+
+    await run(["agent", "pattern"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("No results found.");
+  });
+
+  test("single-term still works exactly as before", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "single.md"),
+      "---\ntitle: \"Single\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nOrchestration layer\n",
+    );
+
+    await run(["orchestration"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("single.md");
+    expect(output).toContain("Orchestration");
+  });
+
+  test("empty terms after split (multiple spaces) are filtered out", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "spaces.md"),
+      "---\ntitle: \"Spaces\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nagent pattern\n",
+    );
+
+    // Extra spaces between terms should still work
+    await run(["agent   pattern"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("spaces.md");
+  });
+
+  test("multi-term prefers context line with most terms", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "context.md"),
+      "---\ntitle: \"Context\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nThe agent is here.\nThe agent uses a pattern for routing.\nSome other line.\n",
+    );
+
+    await run(["agent", "pattern"], vault.config);
+    const output = logs.join("\n");
+    expect(output).toContain("context.md");
+    // The line with both "agent" and "pattern" should be shown
+    expect(output).toContain("agent uses a pattern");
+  });
 });
