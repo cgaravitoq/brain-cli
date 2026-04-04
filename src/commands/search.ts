@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { stem } from "../search/stemmer";
@@ -10,11 +11,37 @@ interface SearchResult {
   contextLine: string | null;
 }
 
+/** Parse frontmatter tags string like "[foo, bar]" into a lowercase array. */
+function parseTags(raw: string): string[] {
+  const stripped = raw.replace(/^\[/, "").replace(/\]$/, "");
+  return stripped
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 0);
+}
+
 export async function run(args: string[], config: Config): Promise<void> {
-  const query = args.join(" ").trim();
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      tag: { type: "string" },
+    },
+    strict: false,
+    allowPositionals: true,
+  });
+
+  const query = positionals.join(" ").trim();
   if (!query) {
     die("Usage: brain search <query>", 2);
   }
+
+  const tagFilter =
+    typeof values.tag === "string"
+      ? values.tag
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length > 0)
+      : null;
 
   const terms = query
     .split(/\s+/)
@@ -27,6 +54,16 @@ export async function run(args: string[], config: Config): Promise<void> {
   for await (const path of glob.scan({ cwd: config.vault })) {
     const fullPath = join(config.vault, path);
     const content = await Bun.file(fullPath).text();
+
+    // Tag filtering: when --tag is active, skip files that don't match
+    if (tagFilter) {
+      const parsed = parseFrontmatter(content);
+      if (!parsed?.frontmatter.tags) continue;
+      const fileTags = parseTags(parsed.frontmatter.tags);
+      const hasMatch = tagFilter.some((ft) => fileTags.includes(ft));
+      if (!hasMatch) continue;
+    }
+
     const contentLower = content.toLowerCase();
 
     // AND semantics: every term must appear somewhere in the content
