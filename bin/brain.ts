@@ -19,9 +19,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain push               Git add, commit & push
        brain pull               Git pull with rebase
        brain log                Show vault git log
-       brain config [path]      View/set vault path`;
+       brain config [path]      View/set vault path
+       brain mcp                MCP server (stdio)`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
       push: () => import("../src/commands/push").then((m) => m.run),
       pull: () => import("../src/commands/pull").then((m) => m.run),
       log: () => import("../src/commands/log").then((m) => m.run),
+      mcp: () => import("../src/commands/mcp").then((m) => m.run),
     };
 
     const handler = await commands[subcommand]!();
@@ -76,7 +78,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log"]);
+    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log", "mcp"]);
     await handler(rawArgCommands.has(subcommand) ? Bun.argv.slice(3) : subArgs, config);
     return;
   }

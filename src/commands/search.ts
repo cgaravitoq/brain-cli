@@ -5,7 +5,7 @@ import { die } from "../errors";
 import { stem } from "../search/stemmer";
 import { parseFrontmatter } from "../frontmatter";
 
-interface SearchResult {
+export interface SearchResult {
   path: string;
   score: number;
   contextLine: string | null;
@@ -20,39 +20,27 @@ function parseTags(raw: string): string[] {
     .filter((t) => t.length > 0);
 }
 
-export async function run(args: string[], config: Config): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args,
-    options: {
-      tag: { type: "string" },
-    },
-    strict: false,
-    allowPositionals: true,
-  });
-
-  const query = positionals.join(" ").trim();
-  if (!query) {
-    die("Usage: brain search <query>", 2);
-  }
-
-  const tagFilter =
-    typeof values.tag === "string"
-      ? values.tag
-          .split(",")
-          .map((t) => t.trim().toLowerCase())
-          .filter((t) => t.length > 0)
-      : null;
-
+/**
+ * Search the vault for files matching a query string.
+ * Returns results sorted by relevance score (descending).
+ */
+export async function searchVault(
+  vault: string,
+  query: string,
+  tagFilter?: string[] | null,
+): Promise<SearchResult[]> {
   const terms = query
     .split(/\s+/)
     .filter((t) => t.length > 0)
     .map((t) => t.toLowerCase());
 
+  if (terms.length === 0) return [];
+
   const glob = new Bun.Glob("**/*.md");
   const results: SearchResult[] = [];
 
-  for await (const path of glob.scan({ cwd: config.vault })) {
-    const fullPath = join(config.vault, path);
+  for await (const path of glob.scan({ cwd: vault })) {
+    const fullPath = join(vault, path);
     const content = await Bun.file(fullPath).text();
 
     // Tag filtering: when --tag is active, skip files that don't match
@@ -143,13 +131,46 @@ export async function run(args: string[], config: Config): Promise<void> {
     results.push({ path, score, contextLine: bestLine });
   }
 
+  // Sort by score descending
+  results.sort((a, b) => b.score - a.score);
+
+  return results;
+}
+
+export async function run(args: string[], config: Config): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      tag: { type: "string" },
+    },
+    strict: false,
+    allowPositionals: true,
+  });
+
+  const query = positionals.join(" ").trim();
+  if (!query) {
+    die("Usage: brain search <query>", 2);
+  }
+
+  const tagFilter =
+    typeof values.tag === "string"
+      ? values.tag
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length > 0)
+      : null;
+
+  const results = await searchVault(config.vault, query, tagFilter);
+
   if (results.length === 0) {
     console.log("No results found.");
     return;
   }
 
-  // Sort by score descending
-  results.sort((a, b) => b.score - a.score);
+  const terms = query
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+    .map((t) => t.toLowerCase());
 
   for (const result of results) {
     console.log(result.path);
