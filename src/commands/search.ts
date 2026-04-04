@@ -2,6 +2,13 @@ import { join } from "node:path";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { stem } from "../search/stemmer";
+import { parseFrontmatter } from "../frontmatter";
+
+interface SearchResult {
+  path: string;
+  score: number;
+  contextLine: string | null;
+}
 
 export async function run(args: string[], config: Config): Promise<void> {
   const query = args.join(" ").trim();
@@ -15,7 +22,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     .map((t) => t.toLowerCase());
 
   const glob = new Bun.Glob("**/*.md");
-  let matchCount = 0;
+  const results: SearchResult[] = [];
 
   for await (const path of glob.scan({ cwd: config.vault })) {
     const fullPath = join(config.vault, path);
@@ -33,14 +40,66 @@ export async function run(args: string[], config: Config): Promise<void> {
       if (!stemmedMatch) continue;
     }
 
-    matchCount++;
-    console.log(path);
+    // Compute relevance score
+    let score = 0;
+    const parsed = parseFrontmatter(content);
+
+    // Title match: +10 if any term appears in frontmatter title
+    if (parsed?.frontmatter.title) {
+      const titleLower = parsed.frontmatter.title.toLowerCase();
+      if (terms.some((t) => titleLower.includes(t))) {
+        score += 10;
+      }
+    }
+
+    // Tag match: +5 if any term appears in frontmatter tags
+    if (parsed?.frontmatter.tags) {
+      const tagsLower = parsed.frontmatter.tags.toLowerCase();
+      if (terms.some((t) => tagsLower.includes(t))) {
+        score += 5;
+      }
+    }
+
+    // Wiki location: +3 if file is in wiki/ directory
+    if (path.startsWith("wiki/")) {
+      score += 3;
+    }
+
+    // Body occurrences: +1 each, capped at 5
+    const body = parsed?.body ?? content;
+    const bodyLower = body.toLowerCase();
+    let bodyOccurrences = 0;
+    for (const term of terms) {
+      let idx = 0;
+      while (idx < bodyLower.length) {
+        const found = bodyLower.indexOf(term, idx);
+        if (found === -1) break;
+        bodyOccurrences++;
+        idx = found + term.length;
+      }
+    }
+    score += Math.min(bodyOccurrences, 5);
 
     // Find the best context line — prefer lines containing the most terms
     const lines = content.split("\n");
     const bestLine = pickBestLine(lines, terms, !exactMatch);
-    if (bestLine) {
-      const trimmed = bestLine.trim();
+
+    results.push({ path, score, contextLine: bestLine });
+  }
+
+  if (results.length === 0) {
+    console.log("No results found.");
+    return;
+  }
+
+  // Sort by score descending
+  results.sort((a, b) => b.score - a.score);
+
+  for (const result of results) {
+    console.log(result.path);
+
+    if (result.contextLine) {
+      const trimmed = result.contextLine.trim();
       const firstTerm = terms[0]!;
       if (terms.length === 1) {
         const display =
@@ -56,10 +115,6 @@ export async function run(args: string[], config: Config): Promise<void> {
         console.log(display);
       }
     }
-  }
-
-  if (matchCount === 0) {
-    console.log("No results found.");
   }
 }
 
