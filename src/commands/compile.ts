@@ -9,6 +9,12 @@ import {
   isGitRepo,
   parseGitStatusPaths as parseGitStatusPathsArray,
 } from "../git";
+import {
+  loadManifest,
+  saveManifest,
+  computeFileHash,
+  type CompileManifest,
+} from "../compile/manifest";
 
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
@@ -72,6 +78,7 @@ export interface CompileOptions {
   model: string;
   noPush: boolean;
   verbose: boolean;
+  all: boolean;
 }
 
 type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
@@ -92,6 +99,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
       model: { type: "string", default: "sonnet" },
       "no-push": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
+      all: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -102,6 +110,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
     model: (values.model as string) ?? "sonnet",
     noPush: (values["no-push"] as boolean) ?? false,
     verbose: (values.verbose as boolean) ?? false,
+    all: (values.all as boolean) ?? false,
   };
 }
 
@@ -245,11 +254,65 @@ async function getGitStatusPaths(vault: string): Promise<Set<string> | null> {
   return parseGitStatusPaths(status.stdout);
 }
 
+export async function filterByManifest(
+  vault: string,
+  files: UnprocessedFile[],
+  manifest: CompileManifest,
+): Promise<UnprocessedFile[]> {
+  const result: UnprocessedFile[] = [];
+
+  for (const file of files) {
+    const fullPath = join(vault, file.path);
+    const content = await Bun.file(fullPath).text();
+    const hash = computeFileHash(content);
+    const entry = manifest.compiled[file.path];
+
+    if (entry && entry.hash === hash) {
+      continue; // unchanged, skip
+    }
+
+    result.push(file);
+  }
+
+  return result;
+}
+
+export async function updateManifest(
+  vault: string,
+  files: UnprocessedFile[],
+  manifest: CompileManifest,
+): Promise<CompileManifest> {
+  const now = new Date().toISOString();
+  const updated: CompileManifest = {
+    lastCompileAt: now,
+    compiled: { ...manifest.compiled },
+  };
+
+  for (const file of files) {
+    const fullPath = join(vault, file.path);
+    const content = await Bun.file(fullPath).text();
+    const hash = computeFileHash(content);
+    updated.compiled[file.path] = { hash, compiledAt: now };
+  }
+
+  return updated;
+}
+
 export async function run(args: string[], config: Config): Promise<void> {
   const options = parseCompileArgs(args);
   const { vault } = config;
 
-  const files = await scanUnprocessed(vault);
+  const allFiles = await scanUnprocessed(vault);
+
+  if (allFiles.length === 0) {
+    console.log("Nothing to compile.");
+    return;
+  }
+
+  const manifest = await loadManifest(vault);
+  const files = options.all
+    ? allFiles
+    : await filterByManifest(vault, allFiles, manifest);
 
   if (files.length === 0) {
     console.log("Nothing to compile.");
@@ -311,6 +374,10 @@ export async function run(args: string[], config: Config): Promise<void> {
   }
 
   console.log("Compilation complete.");
+
+  // Update manifest with hashes for compiled files
+  const updatedManifest = await updateManifest(vault, files, manifest);
+  await saveManifest(vault, updatedManifest);
 
   if (gitBefore === null) {
     console.log("Skipping git commit: vault is not a git repository.");
