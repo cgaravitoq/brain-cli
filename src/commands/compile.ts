@@ -172,6 +172,11 @@ function parseGitStatusPaths(output: string): Set<string> {
       path = path.split(" -> ").pop() ?? path;
     }
 
+    // git wraps paths with spaces/special chars in quotes
+    if (path.startsWith('"') && path.endsWith('"')) {
+      path = path.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+
     paths.add(path);
   }
 

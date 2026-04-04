@@ -2,9 +2,9 @@
 
 ## Project
 
-This is `notes-cli` — a CLI tool for quick note capture into a Second Brain Obsidian vault.
+This is `brain-cli` — a CLI tool for capturing, querying, and compiling knowledge inside a Second Brain Obsidian vault.
 
-Read SPEC.md for the full spec before doing anything.
+There is no persistent `SPEC.md` in this repo. Use `README.md` for the current CLI surface and `prd.md` for the `ask` / `file` product details when those commands are in scope.
 
 ## Rules
 
@@ -43,15 +43,20 @@ src/
     list.ts               # brain list
     stats.ts              # brain stats
     search.ts             # brain search <query>
+    compile.ts            # brain compile [--dry-run] [--model] [--no-push]
+    ask.ts                # brain ask <question> [-p|--print] [--model] [--verbose]
+    file.ts               # brain file [--last] [--as note|article]
     config.ts             # brain config [path]
 test/                     # Mirrors src/ — real temp dirs, no mocks
-  helpers.ts              # createTestVault(), createTestConfigDir()
+  helpers.ts              # temp vault/config/bin helpers
 ```
 
 ## Key patterns
 
 - **Arg parsing:** `parseArgs` from `node:util` with `strict: false`, `allowPositionals: true`
 - **Command routing:** `Record<string, CommandHandler>` in `bin/brain.ts` with lazy imports; `note` is the implicit default (not in registry)
-- **Config testability:** `BRAIN_CONFIG_DIR` env var overrides config path in tests
+- **Config behavior:** `brain config <path>` must work even when no config exists yet; `BRAIN_CONFIG_DIR` overrides the config path in tests
 - **File I/O testing:** real temp directories via `mkdtemp`, cleanup in `afterEach`
 - **File discovery:** `Bun.Glob("**/*.md").scan()` for listing and searching
+- **Claude integration:** `ask` and `compile` shell out to Claude CLI; `BRAIN_CLAUDE_BIN` can override the executable path for tests or custom installs
+- **Compile safety:** `compile` may auto-commit only when the vault is already a git repository; it must not stage unrelated changes outside the compile result set

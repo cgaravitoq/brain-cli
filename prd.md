@@ -88,9 +88,11 @@ brain ask --verbose "question"          # Show agent's research process
 #### Technical details
 
 - Agent spawned via `claude -p` (print mode), read-only — agent writes answer to stdout, CLI handles file creation
+- `BRAIN_CLAUDE_BIN` may override the Claude executable path for tests or custom installs
 - Model default: `sonnet` (fast, cheap for research). Flag to override.
 - Output directory: `output/asks/` — created automatically if missing
 - Filename: `YYYY-MM-DD-<slugified-question>.md`
+- If a filename already exists for the same date/question, suffix with `-2`, `-3`, etc. instead of overwriting
 - If slug is too long (>60 chars), truncate to first meaningful words
 
 #### What the terminal shows
@@ -160,6 +162,7 @@ brain file --as article # File into raw/articles/ instead of raw/notes/
 - No unfiled outputs → "Nothing to file."
 - Only one unfiled output → skip the list, file it directly (with confirmation)
 - `--last` + `--as article` can combine
+- If the destination raw filename already exists, fail instead of overwriting it
 
 #### What happens next
 
@@ -177,6 +180,8 @@ Don't give the agent Write permissions to the vault. Instead:
 3. CLI captures stdout, adds frontmatter, writes to `output/asks/`
 
 This is simpler, safer, and consistent with how `brain compile` works (Claude writes, but through controlled output). The agent focuses on research; the CLI handles file I/O.
+
+Progress text for `brain ask -p` should go to stderr so stdout remains clean markdown.
 
 ### Vault access scope
 
