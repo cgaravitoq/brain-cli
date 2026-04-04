@@ -9,6 +9,11 @@ import {
   isGitRepo,
   parseGitStatusPaths as parseGitStatusPathsArray,
 } from "../git";
+import {
+  loadManifest,
+  saveManifest,
+  computeFileHash,
+} from "../compile/manifest";
 
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
@@ -72,6 +77,7 @@ export interface CompileOptions {
   model: string;
   noPush: boolean;
   verbose: boolean;
+  all: boolean;
 }
 
 type SubprocessStream = ReturnType<typeof Bun.spawn>["stdout"];
@@ -92,6 +98,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
       model: { type: "string", default: "sonnet" },
       "no-push": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
+      all: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -102,6 +109,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
     model: (values.model as string) ?? "sonnet",
     noPush: (values["no-push"] as boolean) ?? false,
     verbose: (values.verbose as boolean) ?? false,
+    all: (values.all as boolean) ?? false,
   };
 }
 
@@ -249,7 +257,30 @@ export async function run(args: string[], config: Config): Promise<void> {
   const options = parseCompileArgs(args);
   const { vault } = config;
 
-  const files = await scanUnprocessed(vault);
+  const allFiles = await scanUnprocessed(vault);
+
+  if (allFiles.length === 0) {
+    console.log("Nothing to compile.");
+    return;
+  }
+
+  // Filter by manifest unless --all is passed
+  const manifest = await loadManifest(vault);
+  let files: UnprocessedFile[];
+
+  if (options.all) {
+    files = allFiles;
+  } else {
+    files = [];
+    for (const f of allFiles) {
+      const fullPath = join(vault, f.path);
+      const hash = await computeFileHash(fullPath);
+      const entry = manifest.compiled[f.path];
+      if (!entry || entry.hash !== hash) {
+        files.push(f);
+      }
+    }
+  }
 
   if (files.length === 0) {
     console.log("Nothing to compile.");
@@ -311,6 +342,16 @@ export async function run(args: string[], config: Config): Promise<void> {
   }
 
   console.log("Compilation complete.");
+
+  // Update manifest with compiled file hashes
+  const now = new Date().toISOString();
+  for (const f of files) {
+    const fullPath = join(vault, f.path);
+    const hash = await computeFileHash(fullPath);
+    manifest.compiled[f.path] = { hash, compiledAt: now };
+  }
+  manifest.lastCompileAt = now;
+  await saveManifest(vault, manifest);
 
   if (gitBefore === null) {
     console.log("Skipping git commit: vault is not a git repository.");

@@ -12,6 +12,7 @@ import {
   run,
 } from "../../src/commands/compile";
 import type { WikiArticle, UnprocessedFile } from "../../src/commands/compile";
+import { loadManifest } from "../../src/compile/manifest";
 
 describe("compile command", () => {
   let vault: TestVault;
@@ -45,6 +46,7 @@ describe("compile command", () => {
         model: "sonnet",
         noPush: false,
         verbose: false,
+        all: false,
       });
     });
 
@@ -68,18 +70,25 @@ describe("compile command", () => {
       expect(opts.verbose).toBe(true);
     });
 
+    test("parses --all", () => {
+      const opts = parseCompileArgs(["--all"]);
+      expect(opts.all).toBe(true);
+    });
+
     test("parses all flags together", () => {
       const opts = parseCompileArgs([
         "--dry-run",
         "--model", "opus",
         "--no-push",
         "--verbose",
+        "--all",
       ]);
       expect(opts).toEqual({
         dryRun: true,
         model: "opus",
         noPush: true,
         verbose: true,
+        all: true,
       });
     });
   });
@@ -391,6 +400,176 @@ describe("compile command", () => {
       expect(prompt).toContain("2 unprocessed file(s)");
       expect(prompt).toContain("`raw/notes/a.md`");
       expect(prompt).toContain("`raw/articles/b.md`");
+    });
+  });
+
+  describe("incremental compilation", () => {
+    test("first compile processes all files", async () => {
+      const fakeClaude = await createFakeExecutable(
+        "claude",
+        "#!/bin/sh\nexit 0\n",
+      );
+      process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+      const fm1 = generateFrontmatter({
+        title: "Note A",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      const fm2 = generateFrontmatter({
+        title: "Note B",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "a.md"),
+        `${fm1}\n\nBody A.\n`,
+      );
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "b.md"),
+        `${fm2}\n\nBody B.\n`,
+      );
+
+      try {
+        await run([], vault.config);
+      } finally {
+        await fakeClaude.cleanup();
+      }
+
+      const output = logs.join("\n");
+      expect(output).toContain("Compiling 2 file(s)...");
+      expect(output).toContain("Compilation complete.");
+    });
+
+    test("second compile skips unchanged files", async () => {
+      const fakeClaude = await createFakeExecutable(
+        "claude",
+        "#!/bin/sh\nexit 0\n",
+      );
+      process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+      const fm = generateFrontmatter({
+        title: "Note A",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "a.md"),
+        `${fm}\n\nBody A.\n`,
+      );
+
+      try {
+        // First compile
+        await run([], vault.config);
+        logs.length = 0;
+
+        // Second compile — should skip
+        await run([], vault.config);
+      } finally {
+        await fakeClaude.cleanup();
+      }
+
+      const output = logs.join("\n");
+      expect(output).toContain("Nothing to compile.");
+    });
+
+    test("modified file is recompiled", async () => {
+      const fakeClaude = await createFakeExecutable(
+        "claude",
+        "#!/bin/sh\nexit 0\n",
+      );
+      process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+      const fm = generateFrontmatter({
+        title: "Note A",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      const filePath = join(vault.config.vault, "raw", "notes", "a.md");
+      await Bun.write(filePath, `${fm}\n\nBody A.\n`);
+
+      try {
+        // First compile
+        await run([], vault.config);
+        logs.length = 0;
+
+        // Modify the file
+        await Bun.write(filePath, `${fm}\n\nBody A updated.\n`);
+
+        // Second compile — should recompile the modified file
+        await run([], vault.config);
+      } finally {
+        await fakeClaude.cleanup();
+      }
+
+      const output = logs.join("\n");
+      expect(output).toContain("Compiling 1 file(s)...");
+      expect(output).toContain("Compilation complete.");
+    });
+
+    test("--all forces full recompile", async () => {
+      const fakeClaude = await createFakeExecutable(
+        "claude",
+        "#!/bin/sh\nexit 0\n",
+      );
+      process.env.BRAIN_CLAUDE_BIN = join(fakeClaude.dir, "claude");
+
+      const fm1 = generateFrontmatter({
+        title: "Note A",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      const fm2 = generateFrontmatter({
+        title: "Note B",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "a.md"),
+        `${fm1}\n\nBody A.\n`,
+      );
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "b.md"),
+        `${fm2}\n\nBody B.\n`,
+      );
+
+      try {
+        // First compile
+        await run([], vault.config);
+        logs.length = 0;
+
+        // Second compile with --all — should recompile all
+        await run(["--all"], vault.config);
+      } finally {
+        await fakeClaude.cleanup();
+      }
+
+      const output = logs.join("\n");
+      expect(output).toContain("Compiling 2 file(s)...");
+      expect(output).toContain("Compilation complete.");
+    });
+
+    test("dry-run does not update manifest", async () => {
+      const fm = generateFrontmatter({
+        title: "Note A",
+        created: "2026-04-03",
+        tags: ["raw"],
+      });
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "a.md"),
+        `${fm}\n\nBody A.\n`,
+      );
+
+      // Run dry-run — no claude needed
+      await run(["--dry-run"], vault.config);
+      const output1 = logs.join("\n");
+      expect(output1).toContain("Would compile 1 file(s):");
+      logs.length = 0;
+
+      // Manifest should not have been saved, so another dry-run still shows the file
+      await run(["--dry-run"], vault.config);
+      const output2 = logs.join("\n");
+      expect(output2).toContain("Would compile 1 file(s):");
     });
   });
 });
