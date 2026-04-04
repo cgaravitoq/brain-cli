@@ -201,4 +201,44 @@ describe("search command", () => {
     // Both "orchestrated" and "orchestrator" stem to "orchestr"
     expect(output).toContain("stem6.md");
   });
+
+  // --- Relevance ranking tests ---
+
+  test("title match ranks above body-only match", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "body-only.md"),
+      "---\ntitle: \"Unrelated\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\npattern matching is useful\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "title-match.md"),
+      "---\ntitle: \"Pattern\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\npattern matching is useful\n",
+    );
+
+    await run(["pattern"], vault.config);
+    const output = logs.join("\n");
+    const titleIdx = output.indexOf("title-match.md");
+    const bodyIdx = output.indexOf("body-only.md");
+    expect(titleIdx).not.toBe(-1);
+    expect(bodyIdx).not.toBe(-1);
+    expect(titleIdx).toBeLessThan(bodyIdx);
+  });
+
+  test("wiki location ranks above raw location", async () => {
+    await Bun.write(
+      join(vault.config.vault, "raw", "notes", "raw-file.md"),
+      "---\ntitle: \"Concept\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nshared keyword\n",
+    );
+    await Bun.write(
+      join(vault.config.vault, "wiki", "wiki-file.md"),
+      "---\ntitle: \"Concept\"\ncreated: 2026-04-03\ntags: [raw]\n---\n\nshared keyword\n",
+    );
+
+    await run(["shared"], vault.config);
+    const output = logs.join("\n");
+    const wikiIdx = output.indexOf("wiki-file.md");
+    const rawIdx = output.indexOf("raw-file.md");
+    expect(wikiIdx).not.toBe(-1);
+    expect(rawIdx).not.toBe(-1);
+    expect(wikiIdx).toBeLessThan(rawIdx);
+  });
 });
