@@ -58,18 +58,18 @@ brain completions <sh>   Shell completions (bash/zsh/fish)
 
 **Query**
 
-- `brain search <query>` -- search markdown files across the vault (`--tag` to filter by tag, `--json` for machine output)
-- `brain ask <question>` -- run a Claude researcher against the vault and write the answer to `output/asks/` (`-p`/`--print` for stdout-only, `--model` to pick model)
+- `brain search <query>` -- search markdown files across the vault (`--tag`, `--json`)
+- `brain ask <question>` -- run a Claude researcher against the vault (`-p`/`--print`, `--stdout`, `--model`, `--verbose`, `--dry-run`)
 - `brain list` -- show unprocessed raw notes and articles (`--json`)
 - `brain stats` -- vault file counts and configured path (`--json`)
-- `brain log` -- show vault git log (`--all` for full history, `--json`)
+- `brain log` -- show vault git log (`-n`, `--all`, `--json`)
 
 **Compile & Generate**
 
-- `brain compile` -- compile raw material into wiki content via Claude (`--dry-run`, `--model`, `--no-push`, `--all`)
-- `brain report <topic>` -- generate a long-form report (`--print`, `--model`, `--dry-run`)
-- `brain slides <topic>` -- generate a Marp slide deck (`--print`, `--model`, `--count`)
-- `brain chart <topic>` -- generate a matplotlib chart (`--print`, `--model`)
+- `brain compile` -- compile raw material into wiki content via Claude (`--dry-run`, `--model`, `--extract-model`, `--write-model`, `--no-push`, `--all`, `--watch`, `--concurrency`, `--verbose`)
+- `brain report <topic>` -- generate a long-form report (`--print`, `--stdout`, `--model`, `--verbose`, `--dry-run`)
+- `brain slides <topic>` -- generate a Marp slide deck (`--print`, `--stdout`, `--model`, `--verbose`, `--count`, `--dry-run`)
+- `brain chart <topic>` -- generate a matplotlib chart (`--print`, `--stdout`, `--model`, `--verbose`, `--dry-run`)
 - `brain canvas <topic>` -- generate an Obsidian canvas from wikilinks (`--depth`)
 
 **File & Sync**
@@ -103,15 +103,20 @@ brain config ~/Developer/personal/brain   # set path
 |---|---|
 | `BRAIN_CONFIG_DIR` | Override the config directory (mainly for tests) |
 | `BRAIN_CLAUDE_BIN` | Override the Claude CLI executable path |
+| `XDG_CONFIG_HOME` | XDG base directory for config (default: `~/.config`) |
 | `EDITOR` | Editor opened by `brain -e` |
 
 ## How it works
 
 ```
-You → brain "thought" → raw/notes/
-You → brain clip <url> → raw/articles/
-You → brain ask "question" → output/asks/
-You → brain file → raw/notes/ or raw/articles/
+You → brain "thought"       → raw/notes/
+You → brain clip <url>      → raw/articles/
+You → brain ask "question"  → output/asks/
+You → brain report <topic>  → output/reports/
+You → brain slides <topic>  → output/slides/
+You → brain chart <topic>   → output/charts/
+You → brain canvas <topic>  → output/canvas/
+You → brain file            → raw/notes/ or raw/articles/
         ↓
 brain compile → Claude subagent → wiki/concepts/ + indexes
         ↓

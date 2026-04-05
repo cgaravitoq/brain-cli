@@ -1,26 +1,27 @@
 import { die } from "../errors";
 
 export const COMMANDS = [
-  { name: "ask", flags: ["--print", "--stdout", "--model", "--verbose"] },
-  { name: "chart", flags: ["--print", "--stdout", "--model", "--verbose"] },
+  { name: "ask", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
+  { name: "canvas", flags: ["--depth"] },
+  { name: "chart", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
   { name: "clip", flags: ["--dry-run"] },
-  { name: "compile", flags: ["--dry-run", "--model", "--no-push", "--verbose", "--all"] },
+  { name: "compile", flags: ["--dry-run", "--model", "--extract-model", "--write-model", "--no-push", "--verbose", "--all", "--watch", "--concurrency"] },
   { name: "config", flags: [] },
   { name: "doctor", flags: [] },
   { name: "export", flags: ["--format", "--output", "--verbose"] },
   { name: "file", flags: ["--last", "--as"] },
   { name: "init", flags: [] },
   { name: "lint", flags: ["--check", "--fix"] },
-  { name: "list", flags: [] },
-  { name: "log", flags: ["--all", "--verbose"] },
+  { name: "list", flags: ["--json"] },
+  { name: "log", flags: ["-n", "--all", "--json"] },
   { name: "mcp", flags: [] },
   { name: "note", flags: ["--title", "--dry-run"] },
   { name: "pull", flags: [] },
   { name: "push", flags: ["--dry-run", "--message"] },
   { name: "report", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
-  { name: "search", flags: ["--tag"] },
+  { name: "search", flags: ["--tag", "--json"] },
   { name: "slides", flags: ["--print", "--stdout", "--model", "--verbose", "--count", "--dry-run"] },
-  { name: "stats", flags: [] },
+  { name: "stats", flags: ["--json"] },
 ] as const;
 
 const BASH_COMPLETION = `_brain_completions() {
@@ -29,7 +30,7 @@ const BASH_COMPLETION = `_brain_completions() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
   
-  commands="ask chart clip compile config doctor export file init lint list log mcp note pull push report search slides stats"
+  commands="ask canvas chart clip compile config doctor export file init lint list log mcp note pull push report search slides stats"
   flags="--help --version"
   
   case "\${prev}" in
@@ -42,7 +43,11 @@ const BASH_COMPLETION = `_brain_completions() {
       return 0
       ;;
     compile)
-      COMPREPLY=($(compgen -W "\${flags} --model --no-push --all" -- "\${cur}"))
+      COMPREPLY=($(compgen -W "\${flags} --dry-run --model --extract-model --write-model --no-push --verbose --all --watch --concurrency" -- "\${cur}"))
+      return 0
+      ;;
+    canvas)
+      COMPREPLY=($(compgen -W "\${flags} --depth" -- "\${cur}"))
       return 0
       ;;
     export)
@@ -50,7 +55,11 @@ const BASH_COMPLETION = `_brain_completions() {
       return 0
       ;;
     search)
-      COMPREPLY=($(compgen -W "\${flags} --tag" -- "\${cur}"))
+      COMPREPLY=($(compgen -W "\${flags} --tag --json" -- "\${cur}"))
+      return 0
+      ;;
+    list|stats)
+      COMPREPLY=($(compgen -W "\${flags} --json" -- "\${cur}"))
       return 0
       ;;
     push)
@@ -74,7 +83,7 @@ const BASH_COMPLETION = `_brain_completions() {
       return 0
       ;;
     log)
-      COMPREPLY=($(compgen -W "\${flags} --all --verbose" -- "\${cur}"))
+      COMPREPLY=($(compgen -W "\${flags} -n --all --json" -- "\${cur}"))
       return 0
       ;;
     *)
@@ -91,6 +100,7 @@ _brain_commands() {
   local -a commands
   commands=(
     'ask:Query the wiki with a question'
+    'canvas:Generate Obsidian canvas'
     'chart:Generate charts from data'
     'clip:Clip content from URL'
     'compile:Compile raw notes to wiki'
@@ -136,9 +146,17 @@ _brain() {
       _arguments -s "\${opts[@]}" \\
         '(--dry-run)--dry-run[dry run]' \\
         '(-m --model)'{-m,--model}'[model]:model:(sonnet opus)' \\
+        '(--extract-model)--extract-model[extraction model]:model:(sonnet opus)' \\
+        '(--write-model)--write-model[write model]:model:(sonnet opus)' \\
         '(--no-push)--no-push[skip push]' \\
         '(-v --verbose)'{-v,--verbose}'[verbose]' \\
-        '(-a --all)'{-a,--all}'[force all]'
+        '(-a --all)'{-a,--all}'[force all]' \\
+        '(--watch)--watch[watch for changes]' \\
+        '(--concurrency)--concurrency[parallel jobs]:number:'
+      ;;
+    canvas)
+      _arguments -s "\${opts[@]}" \\
+        '(--depth)--depth[link depth]:number:'
       ;;
     export)
       _arguments -s "\${opts[@]}" \\
@@ -148,7 +166,12 @@ _brain() {
       ;;
     search)
       _arguments -s "\${opts[@]}" \\
-        '(-t --tag)'{-t,--tag}'[filter by tag]:tag:'
+        '(-t --tag)'{-t,--tag}'[filter by tag]:tag:' \\
+        '(--json)--json[JSON output]'
+      ;;
+    list|stats)
+      _arguments -s "\${opts[@]}" \\
+        '(--json)--json[JSON output]'
       ;;
     push)
       _arguments -s "\${opts[@]}" \\
@@ -176,8 +199,9 @@ _brain() {
       ;;
     log)
       _arguments -s "\${opts[@]}" \\
+        '(-n)-n[number of entries]:number:' \\
         '(-a --all)'{-a,--all}'[all branches]' \\
-        '(-v --verbose)'{-v,--verbose}'[verbose]'
+        '(--json)--json[JSON output]'
       ;;
     *)
       _describe 'command' _brain_commands
@@ -211,6 +235,7 @@ complete -c brain -n '__fish_use_subcommand' -a 'report' -d 'Generate report'
 complete -c brain -n '__fish_use_subcommand' -a 'search' -d 'Search vault'
 complete -c brain -n '__fish_use_subcommand' -a 'slides' -d 'Generate slides'
 complete -c brain -n '__fish_use_subcommand' -a 'stats' -d 'Show stats'
+complete -c brain -n '__fish_use_subcommand' -a 'canvas' -d 'Generate Obsidian canvas'
 
 # Global flags
 complete -c brain -l help -s h -d 'Show help'
@@ -226,9 +251,16 @@ complete -c brain -n '__fish_seen_subcommand_from ask chart report slides' -l dr
 # compile flags
 complete -c brain -n '__fish_seen_subcommand_from compile' -l dry-run -d 'Dry run'
 complete -c brain -n '__fish_seen_subcommand_from compile' -l model -s m -d 'Model name' -r
+complete -c brain -n '__fish_seen_subcommand_from compile' -l extract-model -d 'Extraction model' -r
+complete -c brain -n '__fish_seen_subcommand_from compile' -l write-model -d 'Write model' -r
 complete -c brain -n '__fish_seen_subcommand_from compile' -l no-push -d 'Skip push'
 complete -c brain -n '__fish_seen_subcommand_from compile' -l verbose -s v -d 'Verbose'
 complete -c brain -n '__fish_seen_subcommand_from compile' -l all -s a -d 'Force all'
+complete -c brain -n '__fish_seen_subcommand_from compile' -l watch -d 'Watch for changes'
+complete -c brain -n '__fish_seen_subcommand_from compile' -l concurrency -d 'Parallel jobs' -r
+
+# canvas flags
+complete -c brain -n '__fish_seen_subcommand_from canvas' -l depth -d 'Link depth' -r
 
 # export flags
 complete -c brain -n '__fish_seen_subcommand_from export' -l format -s f -d 'Export format' -r -a 'json markdown'
@@ -237,6 +269,10 @@ complete -c brain -n '__fish_seen_subcommand_from export' -l verbose -s v -d 'Ve
 
 # search flags
 complete -c brain -n '__fish_seen_subcommand_from search' -l tag -s t -d 'Filter by tag' -r
+complete -c brain -n '__fish_seen_subcommand_from search' -l json -d 'JSON output'
+
+# list/stats flags
+complete -c brain -n '__fish_seen_subcommand_from list stats' -l json -d 'JSON output'
 
 # push flags
 complete -c brain -n '__fish_seen_subcommand_from push' -l message -s m -d 'Commit message' -r
@@ -258,8 +294,9 @@ complete -c brain -n '__fish_seen_subcommand_from lint' -l fix -s f -d 'Fix issu
 complete -c brain -n '__fish_seen_subcommand_from clip' -l dry-run -d 'Dry run'
 
 # log flags
+complete -c brain -n '__fish_seen_subcommand_from log' -s n -d 'Number of entries' -r
 complete -c brain -n '__fish_seen_subcommand_from log' -l all -s a -d 'All branches'
-complete -c brain -n '__fish_seen_subcommand_from log' -l verbose -s v -d 'Verbose'`;
+complete -c brain -n '__fish_seen_subcommand_from log' -l json -d 'JSON output'`;
 
 export function parseCompletionsArgs(args: string[]): string {
   const shell = args[0];
