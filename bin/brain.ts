@@ -22,6 +22,7 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain pull               Git pull with rebase
        brain log                Show vault git log
        brain init [path]        Create vault structure
+       brain doctor             Diagnose vault setup
        brain config [path]      View/set vault path
        brain mcp                MCP server (stdio)
        brain lint               Lint vault health
@@ -74,6 +75,13 @@ async function main(): Promise<void> {
     const { parseInitArgs, run: initRun } = await import("../src/commands/init");
     const { path } = parseInitArgs(positionals.slice(1));
     await initRun({ path });
+    return;
+  }
+
+  // Doctor: loads its own config, handle early
+  if (subcommand === "doctor") {
+    const { run: doctorRun } = await import("../src/commands/doctor");
+    await doctorRun();
     return;
   }
 
