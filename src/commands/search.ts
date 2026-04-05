@@ -41,7 +41,12 @@ export async function searchVault(
 
   for await (const path of globFiles("**/*.md", vault)) {
     const fullPath = join(vault, path);
-    const content = await readTextFile(fullPath);
+    let content: string;
+    try {
+      content = await readTextFile(fullPath);
+    } catch {
+      continue;
+    }
 
     // Tag filtering: when --tag is active, skip files that don't match
     if (tagFilter) {

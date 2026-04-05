@@ -100,6 +100,7 @@ describe("compile manifest", () => {
   describe("saveManifest", () => {
     test("writes manifest to .brain directory", async () => {
       const manifest: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {
           "raw/notes/test.md": {
@@ -122,6 +123,7 @@ describe("compile manifest", () => {
 
     test("creates .brain directory if missing", async () => {
       const manifest: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {},
       };
@@ -148,7 +150,7 @@ describe("compile manifest", () => {
       );
 
       const files = await scanUnprocessed(vault.config.vault);
-      const manifest: CompileManifest = { lastCompileAt: "", compiled: {} };
+      const manifest: CompileManifest = { version: 1, lastCompileAt: "", compiled: {} };
 
       const filtered = await filterByManifest(
         vault.config.vault,
@@ -173,6 +175,7 @@ describe("compile manifest", () => {
 
       const hash = computeFileHash(content);
       const manifest: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {
           "raw/notes/test.md": {
@@ -203,6 +206,7 @@ describe("compile manifest", () => {
       );
 
       const manifest: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {
           "raw/notes/test.md": {
@@ -244,6 +248,7 @@ describe("compile manifest", () => {
       );
 
       const manifest: CompileManifest = {
+        version: 1,
         lastCompileAt: "2026-04-03T00:00:00.000Z",
         compiled: {
           "raw/notes/unchanged.md": {
@@ -394,6 +399,7 @@ describe("compile incremental integration", () => {
     ).text();
 
     const manifest: CompileManifest = {
+      version: 1,
       lastCompileAt: "2026-04-03T00:00:00.000Z",
       compiled: {
         "raw/notes/a.md": {

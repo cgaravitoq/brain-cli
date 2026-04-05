@@ -319,7 +319,6 @@ describe("lint: run (integration)", () => {
   let vault: TestVault;
   let logs: string[];
   const originalLog = console.log;
-  const originalExit = process.exit;
 
   beforeEach(async () => {
     vault = await createTestVault();
@@ -331,29 +330,16 @@ describe("lint: run (integration)", () => {
 
   afterEach(async () => {
     console.log = originalLog;
-    process.exit = originalExit;
     await vault.cleanup();
   });
 
   test("empty vault is clean", async () => {
-    // Override process.exit to not actually exit
-    let exitCode: number | undefined;
-    process.exit = ((code?: number) => {
-      exitCode = code;
-    }) as never;
-
     await run([], vault.config);
     // No sections printed means clean
     expect(logs.length).toBe(0);
-    expect(exitCode).toBeUndefined();
   });
 
   test("reports errors and warnings together", async () => {
-    let exitCode: number | undefined;
-    process.exit = ((code?: number) => {
-      exitCode = code;
-    }) as never;
-
     // Create a file with broken link (error)
     const fm = generateFrontmatter({
       title: "Test",
@@ -365,41 +351,29 @@ describe("lint: run (integration)", () => {
       `${fm}\n\nSee [[nonexistent]].\n`,
     );
 
-    await run([], vault.config);
+    await expect(run([], vault.config)).rejects.toThrow("lint found");
     const output = logs.join("\n");
     expect(output).toContain("Links");
     expect(output).toContain("broken link [[nonexistent]]");
     expect(output).toContain("Orphans");
     expect(output).toContain("error(s)");
     expect(output).toContain("warning(s)");
-    expect(exitCode).toBe(1);
   });
 
   test("--check runs only specified check", async () => {
-    let exitCode: number | undefined;
-    process.exit = ((code?: number) => {
-      exitCode = code;
-    }) as never;
-
     // Create a file with broken link AND missing frontmatter
     await Bun.write(
       join(vault.config.vault, "wiki", "test.md"),
       "No frontmatter here. See [[broken]].\n",
     );
 
-    await run(["--check", "links"], vault.config);
+    await expect(run(["--check", "links"], vault.config)).rejects.toThrow("lint found");
     const output = logs.join("\n");
     expect(output).toContain("Links");
     expect(output).not.toContain("Frontmatter");
-    expect(exitCode).toBe(1);
   });
 
   test("--fix repairs broken links", async () => {
-    let exitCode: number | undefined;
-    process.exit = ((code?: number) => {
-      exitCode = code;
-    }) as never;
-
     const fm = generateFrontmatter({
       title: "Test",
       created: "2026-04-04",

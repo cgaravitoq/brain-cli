@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { Config } from "../types";
 import { generateFilename } from "../utils";

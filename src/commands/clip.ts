@@ -41,7 +41,7 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   let html: string;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) {
       throw new FileSystemError(
         `Failed to fetch URL: ${response.status} ${response.statusText}`,

@@ -1,7 +1,7 @@
-import { mkdir, writeFile, readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
 import { isGitRepo, runGit } from "../git";
+import { fileExists, writeTextFile } from "../fs";
 
 const VAULT_STRUCTURE = [
   "raw/notes",
@@ -17,7 +17,7 @@ export async function run(options: { path: string | null }): Promise<void> {
   const vaultPath = options.path || process.cwd();
 
   // Check if directory exists and is not empty
-  if (existsSync(vaultPath)) {
+  if (await fileExists(vaultPath)) {
     const entries = await readdir(vaultPath);
     if (entries.length > 0) {
       console.log(`Directory ${vaultPath} is not empty. Aborting.`);
@@ -37,7 +37,7 @@ export async function run(options: { path: string | null }): Promise<void> {
 
   // Create initial INDEX.md
   const indexPath = join(vaultPath, "wiki/indexes/INDEX.md");
-  await writeFile(indexPath, `# Index
+  await writeTextFile(indexPath, `# Index
 
 This is your Second Brain wiki index.
 

@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { CLIError } from "../src/errors";
 import { loadConfig, loadStoredConfig } from "../src/config";
 import { run as noteRun } from "../src/commands/note";
@@ -55,8 +53,8 @@ async function main(): Promise<void> {
   }
 
   if (values.version) {
-    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
-    const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { version: string };
+    const pkgPath = new URL("../package.json", import.meta.url).pathname;
+    const pkg = await Bun.file(pkgPath).json() as { version: string };
     console.log(`brain v${pkg.version}`);
     return;
   }

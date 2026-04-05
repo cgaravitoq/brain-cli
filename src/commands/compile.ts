@@ -395,6 +395,7 @@ export async function updateManifest(
 ): Promise<CompileManifest> {
   const now = new Date().toISOString();
   const updated: CompileManifest = {
+    version: manifest.version,
     lastCompileAt: now,
     compiled: { ...manifest.compiled },
   };

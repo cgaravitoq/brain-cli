@@ -1,8 +1,8 @@
-import { existsSync, accessSync, constants } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { loadStoredConfig } from "../config";
+import { CLIError } from "../errors";
 import { isGitRepo, runGit } from "../git";
+import { fileExists } from "../fs";
 
 interface Check {
   name: string;
@@ -31,7 +31,7 @@ export async function run(): Promise<void> {
     });
 
     // 2. Vault exists
-    if (!existsSync(config.vault)) {
+    if (!(await fileExists(config.vault))) {
       checks.push({
         name: "Vault exists",
         status: "fail",
@@ -47,9 +47,12 @@ export async function run(): Promise<void> {
 
       // 3. Vault structure
       const requiredDirs = ["raw/notes", "raw/articles", "wiki/indexes"];
-      const missing = requiredDirs.filter(
-        (d) => !existsSync(join(config.vault, d)),
-      );
+      const missing: string[] = [];
+      for (const d of requiredDirs) {
+        if (!(await fileExists(join(config.vault, d)))) {
+          missing.push(d);
+        }
+      }
       if (missing.length > 0) {
         checks.push({
           name: "Structure",
@@ -98,9 +101,12 @@ export async function run(): Promise<void> {
         });
       }
 
-      // 6. Permissions
+      // 6. Permissions — try writing a temp file
       try {
-        accessSync(config.vault, constants.W_OK);
+        const testPath = join(config.vault, ".brain-doctor-test");
+        await Bun.write(testPath, "");
+        const { unlink } = await import("node:fs/promises");
+        await unlink(testPath);
         checks.push({
           name: "Permissions",
           status: "pass",
@@ -119,12 +125,13 @@ export async function run(): Promise<void> {
 
   // 7. Claude CLI check
   const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
-  const claudeResult = spawnSync("which", [claudeBin], { encoding: "utf8" });
-  if (claudeResult.status === 0 && claudeResult.stdout.trim()) {
+  const claudeResult = Bun.spawnSync(["which", claudeBin]);
+  const claudePath = new TextDecoder().decode(claudeResult.stdout).trim();
+  if (claudeResult.exitCode === 0 && claudePath) {
     checks.push({
       name: "Claude CLI",
       status: "pass",
-      message: `Available at ${claudeResult.stdout.trim()}`,
+      message: `Available at ${claudePath}`,
     });
   } else {
     checks.push({
@@ -157,6 +164,6 @@ export async function run(): Promise<void> {
   console.log(`\n${passCount}/${checks.length} checks passed`);
 
   if (failCount > 0) {
-    process.exit(1);
+    throw new CLIError(`${failCount} check(s) failed`);
   }
 }
