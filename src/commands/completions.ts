@@ -1,28 +1,42 @@
 import { die } from "../errors";
 
 export const COMMANDS = [
-  { name: "ask", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
-  { name: "canvas", flags: ["--depth"] },
-  { name: "chart", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
-  { name: "clip", flags: ["--dry-run"] },
-  { name: "compile", flags: ["--dry-run", "--model", "--extract-model", "--write-model", "--no-push", "--verbose", "--all", "--watch", "--concurrency"] },
-  { name: "config", flags: [] },
-  { name: "doctor", flags: [] },
-  { name: "export", flags: ["--format", "--output", "--verbose"] },
-  { name: "file", flags: ["--last", "--as"] },
-  { name: "init", flags: [] },
-  { name: "lint", flags: ["--check", "--fix"] },
-  { name: "list", flags: ["--json"] },
-  { name: "log", flags: ["-n", "--all", "--json"] },
-  { name: "mcp", flags: [] },
-  { name: "note", flags: ["--title", "--dry-run"] },
-  { name: "pull", flags: [] },
-  { name: "push", flags: ["--dry-run", "--message"] },
-  { name: "report", flags: ["--print", "--stdout", "--model", "--verbose", "--dry-run"] },
-  { name: "search", flags: ["--tag", "--json"] },
-  { name: "slides", flags: ["--print", "--stdout", "--model", "--verbose", "--count", "--dry-run"] },
-  { name: "stats", flags: ["--json"] },
+  { name: "ask",     desc: "Query the wiki with a question",   usage: "brain ask <question>",  flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--dry-run      Show what would be created"] },
+  { name: "canvas",  desc: "Generate Obsidian canvas",         usage: "brain canvas <topic>",   flags: ["--depth <n>    Link traversal depth (default: 1)"] },
+  { name: "chart",   desc: "Generate chart with matplotlib",   usage: "brain chart <topic>",    flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--dry-run      Show what would be created"] },
+  { name: "clip",    desc: "Save article from URL",            usage: "brain clip <url>",       flags: ["--dry-run      Show what would be saved"] },
+  { name: "compile", desc: "Compile raw material into wiki",   usage: "brain compile",          flags: ["--dry-run      Preview files to compile", "--model <m>    Model for both phases (default: sonnet)", "--extract-model <m>  Model for extraction phase", "--write-model <m>    Model for writing phase", "--no-push      Skip git push after compile", "--verbose      Show agent stderr", "--all          Recompile all (ignore manifest)", "--watch        Watch for changes and recompile", "--concurrency <n>    Parallel jobs (default: 4)"] },
+  { name: "config",  desc: "View or set vault path",           usage: "brain config [path]",    flags: [] },
+  { name: "doctor",  desc: "Diagnose vault setup",             usage: "brain doctor",           flags: [] },
+  { name: "export",  desc: "Export vault content",             usage: "brain export",           flags: ["--format <f>   json or markdown (default: json)", "--output <dir> Output directory (required for markdown)", "--verbose      Show progress"] },
+  { name: "file",    desc: "File output back into raw/",       usage: "brain file",             flags: ["--last         File the most recent output", "--as <type>    note or article (default: note)"] },
+  { name: "init",    desc: "Create vault directory structure",  usage: "brain init [path]",      flags: [] },
+  { name: "lint",    desc: "Check vault health",               usage: "brain lint",             flags: ["--check <name> Run single check (links|frontmatter|orphans|stale)", "--fix          Auto-fix issues (links only)"] },
+  { name: "list",    desc: "List unprocessed items",           usage: "brain list",             flags: ["--json         Output as JSON"] },
+  { name: "log",     desc: "Show vault git history",           usage: "brain log",              flags: ["-n <count>     Number of entries (default: 10)", "--all          Include all files, not just wiki/raw", "--json         Output as JSON"] },
+  { name: "mcp",     desc: "Start MCP server over stdio",      usage: "brain mcp",              flags: [] },
+  { name: "note",    desc: "Capture a quick note",             usage: "brain <text>",           flags: ["-t, --title <t>  Set note title", "-e, --editor     Open $EDITOR", "--dry-run        Show what would be created"] },
+  { name: "pull",    desc: "Git pull with rebase",             usage: "brain pull",             flags: [] },
+  { name: "push",    desc: "Git add, commit, and push",        usage: "brain push",             flags: ["-m, --message <msg>  Commit message", "--dry-run              Show what would be pushed"] },
+  { name: "report",  desc: "Generate long-form report",        usage: "brain report <topic>",   flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--dry-run      Show what would be created"] },
+  { name: "search",  desc: "Search the vault",                 usage: "brain search <query>",   flags: ["--tag <tags>   Filter by comma-separated tags", "--json         Output as JSON"] },
+  { name: "slides",  desc: "Generate Marp slide deck",         usage: "brain slides <topic>",   flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--count <n>    Target slide count (default: 10)", "--dry-run      Show what would be created"] },
+  { name: "stats",   desc: "Show vault statistics",            usage: "brain stats",            flags: ["--json         Output as JSON"] },
 ] as const;
+
+export function getCommandHelp(name: string): string | null {
+  const cmd = COMMANDS.find((c) => c.name === name);
+  if (!cmd) return null;
+
+  const lines = [`Usage: ${cmd.usage}`, "", cmd.desc];
+  if (cmd.flags.length > 0) {
+    lines.push("", "Options:");
+    for (const flag of cmd.flags) {
+      lines.push(`  ${flag}`);
+    }
+  }
+  return lines.join("\n");
+}
 
 const BASH_COMPLETION = `_brain_completions() {
   local cur prev opts

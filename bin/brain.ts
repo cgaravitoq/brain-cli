@@ -48,6 +48,15 @@ async function main(): Promise<void> {
   });
 
   if (values.help) {
+    const sub = positionals[0];
+    if (sub) {
+      const { getCommandHelp } = await import("../src/commands/completions");
+      const help = getCommandHelp(sub);
+      if (help) {
+        console.log(help);
+        return;
+      }
+    }
     console.log(USAGE);
     return;
   }
