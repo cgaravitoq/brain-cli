@@ -49,6 +49,7 @@ describe("compile command", () => {
         verbose: false,
         all: false,
         watch: false,
+        concurrency: 4,
       });
     });
 
@@ -100,6 +101,7 @@ describe("compile command", () => {
         verbose: true,
         all: true,
         watch: true,
+        concurrency: 4,
       });
     });
   });

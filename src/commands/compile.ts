@@ -18,6 +18,8 @@ import { readTextFile, globFiles } from "../fs";
 import { spawnCapture } from "../spawn";
 import { ensureAgent, type AgentDefinition } from "../agents";
 
+const DEFAULT_CONCURRENCY = 4;
+
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
 ## Instructions
@@ -101,6 +103,7 @@ export interface CompileOptions {
   verbose: boolean;
   all: boolean;
   watch: boolean;
+  concurrency: number;
 }
 
 export function parseCompileArgs(args: string[]): CompileOptions {
@@ -115,6 +118,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
       verbose: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
       watch: { type: "boolean", default: false },
+      concurrency: { type: "string", default: "4" },
     },
     allowPositionals: true,
     strict: false,
@@ -129,6 +133,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
     verbose: (values.verbose as boolean) ?? false,
     all: (values.all as boolean) ?? false,
     watch: (values.watch as boolean) ?? false,
+    concurrency: parseInt((values.concurrency as string) ?? "4", 10) || DEFAULT_CONCURRENCY,
   };
 }
 
@@ -466,6 +471,82 @@ export function parseExtractionPlan(output: string): ExtractionPlan | null {
   }
 }
 
+export async function processFile(
+  file: UnprocessedFile,
+  options: CompileOptions,
+  config: Config,
+): Promise<void> {
+  const { vault } = config;
+  const wikiArticles = await scanWikiInventory(vault);
+
+  if (isTwoPhase(options)) {
+    // Phase 1: Extraction for this file
+    const extractModel = resolveExtractModel(options);
+    await ensureExtractorAgent(vault, extractModel);
+
+    console.log(`Extracting plan for ${file.path}...`);
+    const extractionPrompt = buildExtractionPrompt([file], wikiArticles);
+    const extractResult = await spawnClaude(vault, extractionPrompt, "extractor", options.verbose, true);
+
+    let plan: ExtractionPlan | null = null;
+    if (extractResult.exitCode === 0) {
+      plan = parseExtractionPlan(extractResult.stdout);
+    }
+
+    if (plan) {
+      // Phase 2: Writing with extraction plan
+      const writeModel = resolveWriteModel(options);
+      await ensureCompilerAgent(vault, writeModel);
+
+      const writePrompt = buildWritePrompt([file], wikiArticles, plan);
+      const writeResult = await spawnClaude(vault, writePrompt, "compiler", options.verbose, false);
+
+      if (writeResult.exitCode !== 0) {
+        if (writeResult.stderr) console.error(writeResult.stderr);
+        die(`compilation failed for ${file.path} (exit code ${writeResult.exitCode})`);
+      }
+    } else {
+      // Fallback to single-model compile
+      console.error(`Warning: extraction failed for ${file.path}, falling back to single-model compile`);
+      const writeModel = resolveWriteModel(options);
+      await ensureCompilerAgent(vault, writeModel);
+
+      const prompt = buildPrompt([file], wikiArticles);
+      const result = await spawnClaude(vault, prompt, "compiler", options.verbose, false);
+
+      if (result.exitCode !== 0) {
+        if (result.stderr) console.error(result.stderr);
+        die(`compilation failed for ${file.path} (exit code ${result.exitCode})`);
+      }
+    }
+  } else {
+    // Single-phase compile
+    await ensureCompilerAgent(vault, options.model);
+
+    const prompt = buildPrompt([file], wikiArticles);
+    const result = await spawnClaude(vault, prompt, "compiler", options.verbose, false);
+
+    if (result.exitCode !== 0) {
+      if (result.stderr) console.error(result.stderr);
+      die(`compilation failed for ${file.path} (exit code ${result.exitCode})`);
+    }
+  }
+}
+
+export async function processFilesInBatch(
+  files: UnprocessedFile[],
+  options: CompileOptions,
+  config: Config,
+  concurrency: number = DEFAULT_CONCURRENCY,
+): Promise<void> {
+  for (let i = 0; i < files.length; i += concurrency) {
+    const batch = files.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map((file) => processFile(file, options, config))
+    );
+  }
+}
+
 async function compileOnce(options: CompileOptions, config: Config): Promise<void> {
   const { vault } = config;
 
@@ -525,71 +606,10 @@ async function compileOnce(options: CompileOptions, config: Config): Promise<voi
   }
 
   const gitBefore = await getGitStatusPaths(vault);
-  const wikiArticles = await scanWikiInventory(vault);
 
-  if (twoPhase) {
-    // Phase 1: Extraction
-    const extractModel = resolveExtractModel(options);
-    await ensureExtractorAgent(vault, extractModel);
+  console.log(`Compiling ${files.length} file(s)...`);
 
-    const extractionPrompt = buildExtractionPrompt(files, wikiArticles);
-
-    console.log(`Extracting plan for ${files.length} file(s)...`);
-
-    const extractResult = await spawnClaude(vault, extractionPrompt, "extractor", options.verbose, true);
-
-    let plan: ExtractionPlan | null = null;
-    if (extractResult.exitCode === 0) {
-      plan = parseExtractionPlan(extractResult.stdout);
-    }
-
-    if (plan) {
-      // Phase 2: Writing with extraction plan
-      const writeModel = resolveWriteModel(options);
-      await ensureCompilerAgent(vault, writeModel);
-
-      const writePrompt = buildWritePrompt(files, wikiArticles, plan);
-
-      console.log(`Compiling ${files.length} file(s)...`);
-
-      const writeResult = await spawnClaude(vault, writePrompt, "compiler", options.verbose, false);
-
-      if (writeResult.exitCode !== 0) {
-        if (writeResult.stderr) console.error(writeResult.stderr);
-        die(`compilation failed (exit code ${writeResult.exitCode})`);
-      }
-    } else {
-      // Fallback to single-model compile with write model
-      console.error("Warning: extraction failed, falling back to single-model compile");
-      const writeModel = resolveWriteModel(options);
-      await ensureCompilerAgent(vault, writeModel);
-
-      const prompt = buildPrompt(files, wikiArticles);
-
-      console.log(`Compiling ${files.length} file(s)...`);
-
-      const result = await spawnClaude(vault, prompt, "compiler", options.verbose, false);
-
-      if (result.exitCode !== 0) {
-        if (result.stderr) console.error(result.stderr);
-        die(`compilation failed (exit code ${result.exitCode})`);
-      }
-    }
-  } else {
-    // Single-phase compile (backward compatible)
-    await ensureCompilerAgent(vault, options.model);
-
-    const prompt = buildPrompt(files, wikiArticles);
-
-    console.log(`Compiling ${files.length} file(s)...`);
-
-    const result = await spawnClaude(vault, prompt, "compiler", options.verbose, false);
-
-    if (result.exitCode !== 0) {
-      if (result.stderr) console.error(result.stderr);
-      die(`compilation failed (exit code ${result.exitCode})`);
-    }
-  }
+  await processFilesInBatch(files, options, config, options.concurrency);
 
   console.log("Compilation complete.");
 
