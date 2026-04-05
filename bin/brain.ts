@@ -40,7 +40,7 @@ async function main(): Promise<void> {
       title: { type: "string", short: "t" },
       editor: { type: "boolean", short: "e" },
       help: { type: "boolean", short: "h" },
-      version: { type: "boolean", short: "V" },
+      version: { type: "boolean", short: "v" },
       "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas"]);
+    const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "stats", "search", "list"]);
     await handler(rawArgCommands.has(subcommand) ? process.argv.slice(3) : subArgs, config);
     return;
   }

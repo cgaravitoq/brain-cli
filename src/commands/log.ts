@@ -3,12 +3,62 @@ import type { Config } from "../types";
 import { GitError, ValidationError } from "../errors";
 import { isGitRepo, runGit } from "../git";
 
+interface LogEntry {
+  date: string;
+  time: string;
+  message: string;
+}
+
+async function getLogEntries(
+  vault: string,
+  opts: { all: boolean; limit: number },
+): Promise<LogEntry[]> {
+  const gitArgs = ["log", `--format=%ai %s`, `-${opts.limit}`];
+
+  if (!opts.all) {
+    gitArgs.push("--", "wiki/", "raw/");
+  }
+
+  const result = await runGit(vault, gitArgs);
+
+  if (result.exitCode !== 0) {
+    const stderr = result.stderr.trim();
+    if (
+      stderr.includes("does not have any commits") ||
+      stderr.includes("unknown revision")
+    ) {
+      return [];
+    }
+    throw new GitError(stderr || "git log failed");
+  }
+
+  const stdout = result.stdout.trim();
+  if (!stdout) return [];
+
+  const entries: LogEntry[] = [];
+  const lines = stdout.split("\n");
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const match = line.match(
+      /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}):\d{2} [+-]\d{4} (.*)$/,
+    );
+    if (match) {
+      entries.push({ date: match[1]!, time: match[2]!, message: match[3]! });
+    } else {
+      entries.push({ date: "", time: "", message: line });
+    }
+  }
+
+  return entries;
+}
+
 export async function run(args: string[], config: Config): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
       n: { type: "string" },
       all: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -27,42 +77,24 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   const allFlag = (values.all as boolean) ?? false;
 
-  const gitArgs = ["log", `--format=%ai %s`, `-${count}`];
-
-  if (!allFlag) {
-    gitArgs.push("--", "wiki/", "raw/");
+  if (values.json) {
+    const entries = await getLogEntries(vault, { all: allFlag, limit: count });
+    console.log(JSON.stringify({ commits: entries }));
+    return;
   }
 
-  const result = await runGit(vault, gitArgs);
+  const entries = await getLogEntries(vault, { all: allFlag, limit: count });
 
-  if (result.exitCode !== 0) {
-    const stderr = result.stderr.trim();
-    if (
-      stderr.includes("does not have any commits") ||
-      stderr.includes("unknown revision")
-    ) {
-      console.log("No log entries.");
-      return;
-    }
-    throw new GitError(stderr || "git log failed");
-  }
-
-  const stdout = result.stdout.trim();
-  if (!stdout) {
+  if (entries.length === 0) {
     console.log("No log entries.");
     return;
   }
 
-  const lines = stdout.split("\n");
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const match = line.match(
-      /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}):\d{2} [+-]\d{4} (.*)$/,
-    );
-    if (match) {
-      console.log(`${match[1]} ${match[2]}  ${match[3]}`);
+  for (const entry of entries) {
+    if (entry.date && entry.time) {
+      console.log(`${entry.date} ${entry.time}  ${entry.message}`);
     } else {
-      console.log(line);
+      console.log(entry.message);
     }
   }
 }

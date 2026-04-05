@@ -142,6 +142,7 @@ export async function run(args: string[], config: Config): Promise<void> {
     args,
     options: {
       tag: { type: "string" },
+      json: { type: "boolean", default: false },
     },
     strict: false,
     allowPositionals: true,
@@ -163,6 +164,12 @@ export async function run(args: string[], config: Config): Promise<void> {
           .map((t) => t.trim().toLowerCase())
           .filter((t) => t.length > 0)
       : null;
+
+  if (values.json) {
+    const results = await searchVault(config.vault, query, tagFilter);
+    console.log(JSON.stringify({ results }));
+    return;
+  }
 
   const results = await searchVault(config.vault, query, tagFilter);
 
