@@ -52,6 +52,7 @@ export interface ReportOptions {
   stdout: boolean;
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 }
 
 export function parseReportArgs(args: string[]): { options: ReportOptions; topic: string } {
@@ -62,6 +63,7 @@ export function parseReportArgs(args: string[]): { options: ReportOptions; topic
       stdout: { type: "boolean", default: false },
       model: { type: "string", default: "sonnet" },
       verbose: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -80,6 +82,7 @@ export function parseReportArgs(args: string[]): { options: ReportOptions; topic
       stdout: stdoutMode,
       model: (values.model as string) ?? "sonnet",
       verbose: stdoutMode ? false : ((values.verbose as boolean) ?? false),
+      dryRun: (values["dry-run"] as boolean) ?? false,
     },
     topic,
   };
@@ -209,6 +212,13 @@ export async function run(args: string[], config: Config): Promise<void> {
   const { options, topic } = parseReportArgs(args);
   const { vault } = config;
   const silent = options.stdout;
+
+  if (options.dryRun) {
+    const filename = generateReportFilename(topic);
+    console.log(`\n📄 Would create: output/reports/${filename}`);
+    console.log(`   Topic: ${topic}`);
+    return;
+  }
 
   await ensureReporterAgent(vault, options.model);
 

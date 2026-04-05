@@ -58,6 +58,7 @@ export interface ChartOptions {
   stdout: boolean;
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 }
 
 export interface ChartJson {
@@ -76,6 +77,7 @@ export function parseChartArgs(args: string[]): { options: ChartOptions; questio
       stdout: { type: "boolean", default: false },
       model: { type: "string", default: "sonnet" },
       verbose: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -94,6 +96,7 @@ export function parseChartArgs(args: string[]): { options: ChartOptions; questio
       stdout: stdoutMode,
       model: (values.model as string) ?? "sonnet",
       verbose: stdoutMode ? false : ((values.verbose as boolean) ?? false),
+      dryRun: (values["dry-run"] as boolean) ?? false,
     },
     question,
   };
@@ -206,6 +209,16 @@ export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseChartArgs(args);
   const { vault } = config;
   const silent = options.stdout;
+
+  if (options.dryRun) {
+    const stem = generateChartFilename(question);
+    const pngFilename = `${stem}.png`;
+    const mdFilename = `${stem}.md`;
+    console.log(`\n📊 Would generate:`);
+    console.log(`   PNG: output/charts/${pngFilename}`);
+    console.log(`   MD:  output/charts/${mdFilename}`);
+    return;
+  }
 
   // Check matplotlib availability
   const check = spawnSyncCapture(["python3", "-c", "import matplotlib"]);

@@ -39,6 +39,7 @@ async function main(): Promise<void> {
       editor: { type: "boolean", short: "e" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "V" },
+      "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas"]);
+    const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas"]);
     await handler(rawArgCommands.has(subcommand) ? process.argv.slice(3) : subArgs, config);
     return;
   }
@@ -97,14 +98,17 @@ async function main(): Promise<void> {
   // Default: note command
   const config = await loadConfig();
 
+  const dryRun = (values["dry-run"] as boolean) ?? false;
+
   if (values.editor) {
-    await noteRun([], config, { editor: true });
+    await noteRun([], config, { editor: true, dryRun });
     return;
   }
 
   if (values.title || positionals.length > 0) {
     await noteRun(positionals, config, {
       title: values.title as string | undefined,
+      dryRun,
     });
     return;
   }

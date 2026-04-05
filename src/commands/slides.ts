@@ -51,6 +51,7 @@ export interface SlidesOptions {
   model: string;
   verbose: boolean;
   count: number;
+  dryRun: boolean;
 }
 
 export function parseSlidesArgs(args: string[]): { options: SlidesOptions; question: string } {
@@ -62,6 +63,7 @@ export function parseSlidesArgs(args: string[]): { options: SlidesOptions; quest
       model: { type: "string", default: "sonnet" },
       verbose: { type: "boolean", default: false },
       count: { type: "string", default: "10" },
+      "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -86,6 +88,7 @@ export function parseSlidesArgs(args: string[]): { options: SlidesOptions; quest
       model: (values.model as string) ?? "sonnet",
       verbose: stdoutMode ? false : ((values.verbose as boolean) ?? false),
       count,
+      dryRun: (values["dry-run"] as boolean) ?? false,
     },
     question,
   };
@@ -159,6 +162,13 @@ export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseSlidesArgs(args);
   const { vault } = config;
   const silent = options.stdout;
+
+  if (options.dryRun) {
+    const filename = generateSlidesFilename(question);
+    console.log(`\n🎬 Would create: output/slides/${filename}`);
+    console.log(`   Topic: ${question}`);
+    return;
+  }
 
   await ensurePresenterAgent(vault, options.model);
 

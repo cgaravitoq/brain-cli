@@ -1,3 +1,4 @@
+import { parseArgs } from "node:util";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
@@ -8,7 +9,17 @@ import { ValidationError, FileSystemError } from "../errors";
 import { writeTextFile } from "../fs";
 
 export async function run(args: string[], config: Config): Promise<void> {
-  const url = args[0];
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      "dry-run": { type: "boolean", default: false },
+    },
+    allowPositionals: true,
+    strict: false,
+  });
+
+  const dryRun = (values["dry-run"] as boolean) ?? false;
+  const url = positionals[0];
   if (!url) {
     throw new ValidationError("Usage: brain clip <url>", "brain clip https://example.com/article", 2);
   }
@@ -18,6 +29,14 @@ export async function run(args: string[], config: Config): Promise<void> {
       "URL must start with http:// or https://",
       "brain clip https://example.com/article",
     );
+  }
+
+  if (dryRun) {
+    const title = titleFromUrl(url);
+    const filename = generateFilename(title, new Date());
+    console.log(`\n📎 Would save: ${url}`);
+    console.log(`   As: raw/clips/${filename}`);
+    return;
   }
 
   let html: string;

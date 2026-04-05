@@ -13,6 +13,7 @@ import { spawnSyncInherited } from "../spawn";
 interface NoteOptions {
   title?: string;
   editor?: boolean;
+  dryRun?: boolean;
 }
 
 export async function run(
@@ -34,6 +35,14 @@ export async function run(
   }
 
   const title = options.title || body;
+
+  if (options.dryRun) {
+    const filename = generateFilename(title, new Date());
+    console.log(`\n📝 Would create: raw/notes/${filename}`);
+    console.log(`   Title: ${title || "(untitled)"}`);
+    return;
+  }
+
   const now = new Date();
   const filename = generateFilename(title, now);
   const dir = join(config.vault, "raw", "notes");

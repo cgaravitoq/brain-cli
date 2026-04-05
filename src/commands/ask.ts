@@ -48,6 +48,7 @@ export interface AskOptions {
   stdout: boolean;
   model: string;
   verbose: boolean;
+  dryRun: boolean;
 }
 
 export function parseAskArgs(args: string[]): { options: AskOptions; question: string } {
@@ -58,6 +59,7 @@ export function parseAskArgs(args: string[]): { options: AskOptions; question: s
       stdout: { type: "boolean", default: false },
       model: { type: "string", default: "sonnet" },
       verbose: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -76,6 +78,7 @@ export function parseAskArgs(args: string[]): { options: AskOptions; question: s
       stdout: stdoutMode,
       model: (values.model as string) ?? "sonnet",
       verbose: stdoutMode ? false : ((values.verbose as boolean) ?? false),
+      dryRun: (values["dry-run"] as boolean) ?? false,
     },
     question,
   };
@@ -205,6 +208,13 @@ export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseAskArgs(args);
   const { vault } = config;
   const silent = options.stdout;
+
+  if (options.dryRun) {
+    const filename = generateAskFilename(question);
+    console.log(`\n📝 Would create: output/asks/${filename}`);
+    console.log(`   Question: ${question}`);
+    return;
+  }
 
   await ensureResearcherAgent(vault, options.model);
 
