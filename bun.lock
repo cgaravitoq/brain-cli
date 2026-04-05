@@ -6,8 +6,6 @@
       "name": "notes-cli",
       "devDependencies": {
         "@types/bun": "latest",
-      },
-      "peerDependencies": {
         "typescript": "^5",
       },
     },
