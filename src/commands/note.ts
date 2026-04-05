@@ -6,7 +6,7 @@ import type { Config } from "../types";
 import { generateFilename } from "../utils";
 import { generateFrontmatter } from "../frontmatter";
 import { formatDate } from "../utils";
-import { die } from "../errors";
+import { ValidationError, FileSystemError } from "../errors";
 import { readTextFile, writeTextFile } from "../fs";
 import { spawnSyncInherited } from "../spawn";
 
@@ -26,7 +26,11 @@ export async function run(
 
   const body = args.join(" ").trim();
   if (!body && !options.title) {
-    die("Usage: brain <text> or brain -t \"Title\" <text> or brain -e", 2);
+    throw new ValidationError(
+      "Usage: brain <text> or brain -t \"Title\" <text> or brain -e",
+      "brain \"my quick note\" or brain -e to open editor",
+      2,
+    );
   }
 
   const title = options.title || body;
@@ -62,7 +66,7 @@ async function runEditor(config: Config): Promise<void> {
     const proc = spawnSyncInherited([editor, tmpFile]);
 
     if (proc.exitCode !== 0) {
-      die(`Editor exited with code ${proc.exitCode}`);
+      throw new FileSystemError(`Editor exited with code ${proc.exitCode}`);
     }
 
     const content = (await readTextFile(tmpFile)).trim();

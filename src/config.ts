@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import type { Config, RawConfig } from "./types";
 import { expandHome } from "./utils";
-import { die } from "./errors";
+import { ConfigError } from "./errors";
 import { readTextFile, writeTextFile, fileExists } from "./fs";
 
 export function getConfigDir(): string {
@@ -26,7 +26,10 @@ export async function loadStoredConfig(): Promise<Config | null> {
 
   const raw: RawConfig = JSON.parse(await readTextFile(configPath));
   if (!raw.vault) {
-    die("Config is missing 'vault' path. Run: brain config <path>");
+    throw new ConfigError(
+      "Config is missing 'vault' path. Run: brain config <path>",
+      "brain config ~/my-vault",
+    );
   }
 
   return { vault: expandHome(raw.vault) };
@@ -65,7 +68,7 @@ async function initConfig(): Promise<Config> {
   });
 
   if (!vault) {
-    die("No vault path provided.");
+    throw new ConfigError("No vault path provided.", "brain config ~/my-vault");
   }
 
   await saveConfig(vault);

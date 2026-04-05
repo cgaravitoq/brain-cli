@@ -1,6 +1,6 @@
 import type { Config } from "../types";
 import { saveConfig, getConfigPath } from "../config";
-import { die } from "../errors";
+import { ValidationError } from "../errors";
 
 export async function run(args: string[], config: Config): Promise<void> {
   if (args.length === 0) {
@@ -24,5 +24,5 @@ export async function run(args: string[], config: Config): Promise<void> {
     return;
   }
 
-  die("Usage: brain config [path]", 2);
+  throw new ValidationError("Usage: brain config [path]", "brain config ~/my-vault", 2);
 }

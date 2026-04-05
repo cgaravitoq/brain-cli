@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import type { Config } from "../types";
-import { die } from "../errors";
+import { GitError } from "../errors";
 import { isGitRepo, getChangedFiles, runGit } from "../git";
 
 export function generateCommitMessage(files: string[]): string {
@@ -42,7 +42,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const vault = config.vault;
 
   if (!(await isGitRepo(vault))) {
-    die("vault is not a git repository");
+    throw new GitError("vault is not a git repository", "Initialize with: git init");
   }
 
   const changed = await getChangedFiles(vault);
@@ -66,20 +66,20 @@ export async function run(args: string[], config: Config): Promise<void> {
   // git add all changed files
   const add = await runGit(vault, ["add", "--", ...changed]);
   if (add.exitCode !== 0) {
-    die(add.stderr.trim() || "git add failed");
+    throw new GitError(add.stderr.trim() || "git add failed");
   }
 
   // git commit
   const commit = await runGit(vault, ["commit", "-m", message]);
   if (commit.exitCode !== 0) {
-    die(commit.stderr.trim() || "git commit failed");
+    throw new GitError(commit.stderr.trim() || "git commit failed");
   }
   console.log(`Committed: ${message}`);
 
   // git push
   const push = await runGit(vault, ["push"]);
   if (push.exitCode !== 0) {
-    die(push.stderr.trim() || "git push failed");
+    throw new GitError(push.stderr.trim() || "git push failed");
   }
   console.log("Pushed to remote.");
 }

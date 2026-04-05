@@ -4,29 +4,38 @@ import type { Config } from "../types";
 import { generateFilename, formatDate } from "../utils";
 import { generateFrontmatter } from "../frontmatter";
 import { htmlToMarkdown, extractTitle } from "../html";
-import { die } from "../errors";
+import { ValidationError, FileSystemError } from "../errors";
 import { writeTextFile } from "../fs";
 
 export async function run(args: string[], config: Config): Promise<void> {
   const url = args[0];
   if (!url) {
-    die("Usage: brain clip <url>", 2);
+    throw new ValidationError("Usage: brain clip <url>", "brain clip https://example.com/article", 2);
   }
 
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    die("URL must start with http:// or https://");
+    throw new ValidationError(
+      "URL must start with http:// or https://",
+      "brain clip https://example.com/article",
+    );
   }
 
   let html: string;
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      die(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+      throw new FileSystemError(
+        `Failed to fetch URL: ${response.status} ${response.statusText}`,
+        "Check the URL and try again",
+      );
     }
     html = await response.text();
   } catch (err) {
-    if (err instanceof Error && err.name === "CLIError") throw err;
-    die(`Failed to fetch URL: ${err instanceof Error ? err.message : String(err)}`);
+    if (err instanceof Error && (err.name === "CLIError" || err.name === "ValidationError" || err.name === "FileSystemError")) throw err;
+    throw new FileSystemError(
+      `Failed to fetch URL: ${err instanceof Error ? err.message : String(err)}`,
+      "Check your network connection and try again",
+    );
   }
 
   const pageTitle = extractTitle(html) || titleFromUrl(url);

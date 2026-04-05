@@ -1,12 +1,12 @@
 import type { Config } from "../types";
-import { die } from "../errors";
+import { GitError } from "../errors";
 import { isGitRepo, runGit } from "../git";
 
 export async function run(args: string[], config: Config): Promise<void> {
   const vault = config.vault;
 
   if (!(await isGitRepo(vault))) {
-    die("vault is not a git repository");
+    throw new GitError("vault is not a git repository", "Initialize with: git init");
   }
 
   const result = await runGit(vault, ["pull", "--rebase"]);
@@ -15,11 +15,12 @@ export async function run(args: string[], config: Config): Promise<void> {
     const stderr = result.stderr.trim();
     // Handle rebase conflicts
     if (stderr.includes("conflict") || stderr.includes("CONFLICT")) {
-      die(
+      throw new GitError(
         "pull failed: merge conflicts detected. Resolve manually and run `git rebase --continue`",
+        "git rebase --continue (after resolving conflicts)",
       );
     }
-    die(stderr || "git pull failed");
+    throw new GitError(stderr || "git pull failed");
   }
 
   const stdout = result.stdout.trim();

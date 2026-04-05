@@ -117,6 +117,9 @@ async function main(): Promise<void> {
 main().catch((err: unknown) => {
   if (err instanceof CLIError) {
     console.error(`brain: ${err.message}`);
+    if (err.suggestion) {
+      console.error(`  hint: ${err.suggestion}`);
+    }
     process.exit(err.exitCode);
   }
   const message = err instanceof Error ? err.message : String(err);

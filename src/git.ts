@@ -1,4 +1,4 @@
-import { die } from "./errors";
+import { GitError } from "./errors";
 import { spawnCapture } from "./spawn";
 
 export interface GitResult {
@@ -11,10 +11,11 @@ export async function runGit(vault: string, args: string[]): Promise<GitResult> 
   try {
     return await spawnCapture(["git", ...args], { cwd: vault });
   } catch (err) {
-    die(
+    throw new GitError(
       err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
         ? "git not found in PATH"
         : `failed to start git: ${err instanceof Error ? err.message : String(err)}`,
+      "Ensure git is installed and available in PATH",
     );
   }
 }
@@ -56,7 +57,7 @@ export async function getChangedFiles(vault: string): Promise<string[]> {
   ]);
 
   if (status.exitCode !== 0) {
-    die(status.stderr.trim() || "git status failed");
+    throw new GitError(status.stderr.trim() || "git status failed");
   }
 
   return parseGitStatusPaths(status.stdout);

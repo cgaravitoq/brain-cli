@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { Config } from "../types";
-import { die } from "../errors";
+import { ValidationError } from "../errors";
 import { stem } from "../search/stemmer";
 import { parseFrontmatter } from "../frontmatter";
 import { readTextFile, globFiles } from "../fs";
@@ -149,7 +149,11 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   const query = positionals.join(" ").trim();
   if (!query) {
-    die("Usage: brain search <query>", 2);
+    throw new ValidationError(
+      "Usage: brain search <query>",
+      "brain search \"my topic\"",
+      2,
+    );
   }
 
   const tagFilter =

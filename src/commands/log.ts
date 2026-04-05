@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import type { Config } from "../types";
-import { die } from "../errors";
+import { GitError, ValidationError } from "../errors";
 import { isGitRepo, runGit } from "../git";
 
 export async function run(args: string[], config: Config): Promise<void> {
@@ -17,12 +17,12 @@ export async function run(args: string[], config: Config): Promise<void> {
   const vault = config.vault;
 
   if (!(await isGitRepo(vault))) {
-    die("vault is not a git repository");
+    throw new GitError("vault is not a git repository", "Initialize with: git init");
   }
 
   const count = values.n ? parseInt(values.n as string, 10) : 10;
   if (isNaN(count) || count < 1) {
-    die("invalid count for -n flag", 2);
+    throw new ValidationError("invalid count for -n flag", "Use a positive integer, e.g. -n 20", 2);
   }
 
   const allFlag = (values.all as boolean) ?? false;
@@ -44,7 +44,7 @@ export async function run(args: string[], config: Config): Promise<void> {
       console.log("No log entries.");
       return;
     }
-    die(stderr || "git log failed");
+    throw new GitError(stderr || "git log failed");
   }
 
   const stdout = result.stdout.trim();

@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import type { Config } from "../types";
-import { die } from "../errors";
+import { ValidationError } from "../errors";
 import { checkLinks, fixBrokenLinks } from "../lint/links";
 import { checkFrontmatter } from "../lint/frontmatter";
 import { checkOrphans } from "../lint/orphans";
@@ -23,8 +23,9 @@ export async function run(args: string[], config: Config): Promise<void> {
   const checkName = values.check as string | undefined;
 
   if (checkName && !VALID_CHECKS.has(checkName)) {
-    die(
+    throw new ValidationError(
       `Unknown check: ${checkName}. Valid checks: ${[...VALID_CHECKS].join(", ")}`,
+      `Use --check with one of: ${[...VALID_CHECKS].join(", ")}`,
       2,
     );
   }
