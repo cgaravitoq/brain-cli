@@ -43,11 +43,7 @@ export function buildFrontmatter(data: FrontmatterData): string {
 
   if (data.prefix) {
     for (const { key, value } of data.prefix) {
-      if (typeof value === "string") {
-        lines.push(`${key}: ${value}`);
-      } else {
-        lines.push(`${key}: ${value}`);
-      }
+      lines.push(`${key}: ${value}`);
     }
   }
 
