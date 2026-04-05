@@ -1,6 +1,13 @@
 # brain-cli 🧠
 
-CLI for your [Second Brain](https://github.com/cgaravitoq/second-brain) vault. Capture notes, clip articles, query your wiki, file outputs back into the raw pipeline, and compile raw material into a structured wiki via Claude.
+CLI for your [Second Brain](https://github.com/cgaravitoq/second-brain) vault. Capture notes, clip articles, query your wiki, and compile raw material into a structured wiki via Claude.
+
+Zero runtime dependencies -- built entirely on Bun-native APIs.
+
+## Requirements
+
+- [Bun](https://bun.sh) >= 1.0
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) (for `ask`, `compile`, `report`, `slides`, and `chart` commands)
 
 ## Install
 
@@ -11,77 +18,92 @@ bun install
 bun link
 ```
 
-Requires [Bun](https://bun.sh) ≥ 1.0.
-
 ## Usage
 
-```bash
-# Quick note
-brain "Braintrust allows full LLM observability including traces and evals"
-
-# Note with title
-brain -t "Retry Pattern" "Per-section retry beats per-job in parallel pipelines"
-
-# Open editor for longer notes
-brain -e
-
-# Clip a web page
-brain clip https://blog.example.com/interesting-post
-
-# List unprocessed items
-brain list
-
-# Search the vault
-brain search "orchestration"
-
-# Vault stats
-brain stats
-
-# Ask the wiki a question and save the result to output/asks/
-brain ask "how does context routing affect multi-agent orchestration?"
-
-# Print-only mode for ask
-brain ask -p "what changed in my retry strategy?"
-
-# File the most recent ask result back into raw/notes/
-brain file --last
-
-# Compile raw → wiki
-brain compile
 ```
+brain <text>           Quick capture
+brain -t "Title" <text> Note with title
+brain -e                 Open editor
+brain clip <url>         Save article
+brain list               List unprocessed
+brain stats              Vault stats
+brain search <query>     Search vault
+brain compile            Compile raw → wiki
+brain ask <question>     Query the wiki
+brain file               File output → raw
+brain push               Git add, commit & push
+brain pull               Git pull with rebase
+brain log                Show vault git log
+brain init [path]        Create vault structure
+brain doctor             Diagnose vault setup
+brain config [path]      View/set vault path
+brain mcp                MCP server (stdio)
+brain lint               Lint vault health
+brain report <topic>     Generate long-form report
+brain slides <topic>     Generate Marp slide deck
+brain chart <topic>      Generate chart with matplotlib
+brain canvas <topic>     Generate Obsidian canvas
+brain export             Export vault content
+brain completions <sh>   Shell completions (bash/zsh/fish)
+```
+
+## Commands
+
+**Capture**
+
+- `brain <text>` -- create a note in `raw/notes/`
+- `brain -t "Title" <text>` -- note with an explicit title
+- `brain -e` -- open `$EDITOR` for longer notes
+- `brain clip <url>` -- fetch a page, convert to markdown, store in `raw/articles/`
+
+**Query**
+
+- `brain search <query>` -- search markdown files across the vault (`--tag` to filter by tag, `--json` for machine output)
+- `brain ask <question>` -- run a Claude researcher against the vault and write the answer to `output/asks/` (`-p`/`--print` for stdout-only, `--model` to pick model)
+- `brain list` -- show unprocessed raw notes and articles (`--json`)
+- `brain stats` -- vault file counts and configured path (`--json`)
+- `brain log` -- show vault git log (`--all` for full history, `--json`)
+
+**Compile & Generate**
+
+- `brain compile` -- compile raw material into wiki content via Claude (`--dry-run`, `--model`, `--no-push`, `--all`)
+- `brain report <topic>` -- generate a long-form report (`--print`, `--model`, `--dry-run`)
+- `brain slides <topic>` -- generate a Marp slide deck (`--print`, `--model`, `--count`)
+- `brain chart <topic>` -- generate a matplotlib chart (`--print`, `--model`)
+- `brain canvas <topic>` -- generate an Obsidian canvas from wikilinks (`--depth`)
+
+**File & Sync**
+
+- `brain file` -- move an output back into `raw/` (`--last` for most recent, `--as note|article`)
+- `brain push` -- git add, commit, and push vault changes (`-m "msg"`, `--dry-run`)
+- `brain pull` -- git pull with rebase
+- `brain export` -- export vault content (`--format json|markdown`, `--output`)
+
+**Setup**
+
+- `brain config [path]` -- view or set vault path
+- `brain init [path]` -- scaffold a new vault directory
+- `brain doctor` -- diagnose vault configuration issues
+- `brain lint` -- check vault health (`--check links|frontmatter|orphans|stale`, `--fix`)
+- `brain mcp` -- start an MCP server over stdio
+- `brain completions <bash|zsh|fish>` -- emit shell completions
 
 ## Config
 
-On first run, `brain` prompts for your vault path. You can also set it directly without an interactive prompt. Config is stored at `~/.config/brain/config.json`.
+On first run, `brain` prompts for your vault path. Config is stored at `~/.config/brain/config.json`.
 
 ```bash
 brain config                              # show current
 brain config ~/Developer/personal/brain   # set path
 ```
 
-## Commands
+## Environment Variables
 
-`brain <text>` creates a note in `raw/notes/`.
-
-`brain clip <url>` fetches a page, converts it to markdown, and stores it in `raw/articles/`.
-
-`brain list` shows unprocessed raw notes and articles.
-
-`brain search <query>` searches markdown files across the vault.
-
-`brain stats` prints wiki/raw counts and the configured vault path.
-
-`brain ask <question>` runs a read-only Claude researcher against the vault and writes the answer to `output/asks/`. Use `-p` to print the markdown answer to stdout without saving a file.
-
-`brain file` scans `output/` for unfiled markdown outputs and copies one back into `raw/notes/` or `raw/articles/`.
-
-`brain compile` shells out to Claude to turn unprocessed raw material into wiki content. If the vault is a git repo, compile will auto-commit the new compile changes. If it is not a git repo, compile still runs and skips the git step.
-
-## Environment
-
-`BRAIN_CONFIG_DIR` overrides the config directory. This is mainly useful for tests.
-
-`BRAIN_CLAUDE_BIN` overrides the Claude executable used by `brain ask` and `brain compile`.
+| Variable | Purpose |
+|---|---|
+| `BRAIN_CONFIG_DIR` | Override the config directory (mainly for tests) |
+| `BRAIN_CLAUDE_BIN` | Override the Claude CLI executable path |
+| `EDITOR` | Editor opened by `brain -e` |
 
 ## How it works
 
@@ -99,12 +121,10 @@ Optional git commit/push when the vault is already a repo
 ## Development
 
 ```bash
-bun test          # Run tests
-bun x tsc --noEmit # Type check
-bun run bin/brain.ts <args>  # Run locally
+bun test              # Run tests
+bun x tsc --noEmit    # Type check
+bun run bin/brain.ts  # Run locally without linking
 ```
-
-`brain ask` and `brain compile` require a working Claude CLI installation unless `BRAIN_CLAUDE_BIN` points to an alternative executable.
 
 ## License
 

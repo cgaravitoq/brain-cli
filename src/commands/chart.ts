@@ -4,11 +4,17 @@ import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
-import { extractSources, extractRelated, extractTitle } from "./ask";
 import { buildFrontmatter } from "../frontmatter";
 import { writeTextFile, fileExists } from "../fs";
-import { spawnCapture, spawnSyncCapture } from "../spawn";
+import { spawnSyncCapture } from "../spawn";
 import { ensureAgent, type AgentDefinition } from "../agents";
+import {
+  extractSources,
+  extractRelated,
+  extractTitle,
+  log,
+  spawnClaude,
+} from "./shared";
 
 const CHARTIST_SYSTEM_PROMPT = `You are a data visualization specialist with read access to a Second Brain vault. Your job is to research the vault and produce a chart specification as structured JSON.
 
@@ -200,11 +206,6 @@ export function parseChartJson(raw: string): ChartJson {
   return obj as unknown as ChartJson;
 }
 
-/** Log to stderr, unless suppressed (--stdout mode) */
-function log(silent: boolean, ...args: unknown[]): void {
-  if (!silent) console.error(...args);
-}
-
 export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseChartArgs(args);
   const { vault } = config;
@@ -230,45 +231,14 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   log(silent, "Generating chart...\n");
 
-  const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
-  const claudeArgs = [
-    claudeBin,
-    "-p", question,
-    "--agent", "chartist",
-    "--permission-mode", "bypassPermissions",
-  ];
-
-  if (options.verbose) {
-    console.error(`> ${claudeArgs.join(" ")}`);
-  }
-
-  let result: Awaited<ReturnType<typeof spawnCapture>>;
-  try {
-    result = await spawnCapture(claudeArgs, {
-      cwd: vault,
-      stdoutMode: "pipe",
-      stderrMode: options.verbose ? "inherit" : "pipe",
-    });
-  } catch (err) {
-    die(
-      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
-        ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
-        : `failed to start chart agent: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  const { stdout: output, stderr: stderrOutput, exitCode } = result;
-
-  if (exitCode !== 0) {
-    if (stderrOutput && !silent) console.error(stderrOutput);
-    die(`chart generation failed (exit code ${exitCode})`);
-  }
-
-  const rawJson = output.trim();
-
-  if (!rawJson) {
-    die("agent returned empty response");
-  }
+  const rawJson = await spawnClaude({
+    vault,
+    prompt: question,
+    agentName: "chartist",
+    verbose: options.verbose,
+    silent,
+    commandLabel: "chart generation",
+  });
 
   // Parse the JSON specification
   const chartSpec = parseChartJson(rawJson);

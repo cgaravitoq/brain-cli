@@ -3,11 +3,21 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
-import { slugify, formatDate } from "../utils";
 import { buildFrontmatter } from "../frontmatter";
-import { writeTextFile, fileExists } from "../fs";
-import { spawnCapture } from "../spawn";
+import { writeTextFile } from "../fs";
 import { ensureAgent, type AgentDefinition } from "../agents";
+import {
+  extractSources,
+  extractRelated,
+  extractTitle,
+  extractSummary,
+  log,
+  generateAgentFilename,
+  resolveAgentOutputPath,
+  spawnClaude,
+} from "./shared";
+
+export { extractSources, extractRelated, extractTitle, extractSummary } from "./shared";
 
 const RESEARCHER_SYSTEM_PROMPT = `You are a researcher with read access to a Second Brain vault. Your job is to research questions by navigating the wiki and raw materials, then produce a comprehensive markdown answer.
 
@@ -95,8 +105,7 @@ export async function ensureResearcherAgent(vault: string, model: string): Promi
 }
 
 export function generateAskFilename(question: string, date = new Date()): string {
-  const slug = slugify(question, 60);
-  return `${formatDate(date)}-${slug}.md`;
+  return generateAgentFilename(question, date);
 }
 
 export async function resolveAskOutputPath(
@@ -104,21 +113,7 @@ export async function resolveAskOutputPath(
   question: string,
   date = new Date(),
 ): Promise<{ filename: string; filePath: string }> {
-  const baseFilename = generateAskFilename(question, date);
-  const ext = ".md";
-  const stem = baseFilename.slice(0, -ext.length);
-
-  let filename = baseFilename;
-  let filePath = join(outputDir, filename);
-  let suffix = 2;
-
-  while (await fileExists(filePath)) {
-    filename = `${stem}-${suffix}${ext}`;
-    filePath = join(outputDir, filename);
-    suffix++;
-  }
-
-  return { filename, filePath };
+  return resolveAgentOutputPath(outputDir, question, date);
 }
 
 export function buildAskFrontmatter(
@@ -138,72 +133,6 @@ export function buildAskFrontmatter(
   });
 }
 
-export function extractSources(body: string): string[] {
-  const sourcesMatch = body.match(/## Sources consulted\n([\s\S]*?)(?:\n## |$)/i);
-  if (!sourcesMatch) return [];
-  const section = sourcesMatch[1]!;
-  const links: string[] = [];
-  const linkPattern = /\[\[([^\]]+)\]\]/g;
-  let m: RegExpExecArray | null;
-  while ((m = linkPattern.exec(section)) !== null) {
-    links.push(`[[${m[1]}]]`);
-  }
-  return links;
-}
-
-/** Extract wikilinks from the body that aren't in the sources list (related articles) */
-export function extractRelated(body: string, sources: string[]): string[] {
-  const sourceSet = new Set(sources);
-  const linkPattern = /\[\[([^\]]+)\]\]/g;
-
-  // Strip the sources section to avoid double-counting
-  const bodyWithoutSources = body.replace(/## Sources consulted\n[\s\S]*?(?:\n## |$)/i, "");
-
-  const related: string[] = [];
-  const seen = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = linkPattern.exec(bodyWithoutSources)) !== null) {
-    const link = `[[${m[1]}]]`;
-    if (!sourceSet.has(link) && !seen.has(link)) {
-      related.push(link);
-      seen.add(link);
-    }
-  }
-  return related;
-}
-
-export function extractTitle(question: string): string {
-  return question
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace(/\?$/, "");
-}
-
-export function extractSummary(body: string, maxLength = 200): string {
-  const lines = body.split("\n");
-  let foundHeading = false;
-  const paragraphLines: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("# ")) {
-      foundHeading = true;
-      continue;
-    }
-    if (foundHeading) {
-      if (line.trim() === "" && paragraphLines.length > 0) break;
-      if (line.trim() !== "") paragraphLines.push(line.trim());
-    }
-  }
-
-  const paragraph = paragraphLines.join(" ");
-  if (paragraph.length <= maxLength) return paragraph;
-  return paragraph.slice(0, maxLength).replace(/\s+\S*$/, "") + "...";
-}
-
-/** Log to stderr, unless suppressed (--stdout mode) */
-function log(silent: boolean, ...args: unknown[]): void {
-  if (!silent) console.error(...args);
-}
-
 export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseAskArgs(args);
   const { vault } = config;
@@ -220,45 +149,14 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   log(silent, "Researching...\n");
 
-  const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
-  const claudeArgs = [
-    claudeBin,
-    "-p", question,
-    "--agent", "researcher",
-    "--permission-mode", "bypassPermissions",
-  ];
-
-  if (options.verbose) {
-    console.error(`> ${claudeArgs.join(" ")}`);
-  }
-
-  let result: Awaited<ReturnType<typeof spawnCapture>>;
-  try {
-    result = await spawnCapture(claudeArgs, {
-      cwd: vault,
-      stdoutMode: "pipe",
-      stderrMode: options.verbose ? "inherit" : "pipe",
-    });
-  } catch (err) {
-    die(
-      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
-        ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
-        : `failed to start research agent: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  const { stdout: output, stderr: stderrOutput, exitCode } = result;
-
-  if (exitCode !== 0) {
-    if (stderrOutput && !silent) console.error(stderrOutput);
-    die(`research failed (exit code ${exitCode})`);
-  }
-
-  const body = output.trim();
-
-  if (!body) {
-    die("agent returned empty response");
-  }
+  const body = await spawnClaude({
+    vault,
+    prompt: question,
+    agentName: "researcher",
+    verbose: options.verbose,
+    silent,
+    commandLabel: "research",
+  });
 
   // --stdout: raw markdown only, zero stderr, no file written
   if (options.stdout) {

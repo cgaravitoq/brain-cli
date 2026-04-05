@@ -3,12 +3,19 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
-import { slugify, formatDate } from "../utils";
-import { extractSources, extractRelated, extractTitle, extractSummary } from "./ask";
 import { buildFrontmatter } from "../frontmatter";
-import { writeTextFile, fileExists } from "../fs";
-import { spawnCapture } from "../spawn";
+import { writeTextFile } from "../fs";
 import { ensureAgent, type AgentDefinition } from "../agents";
+import {
+  extractSources,
+  extractRelated,
+  extractTitle,
+  extractSummary,
+  log,
+  generateAgentFilename,
+  resolveAgentOutputPath,
+  spawnClaude,
+} from "./shared";
 
 const PRESENTER_SYSTEM_PROMPT = `You are a presenter with read access to a Second Brain vault. Your job is to research a topic and produce a Marp-format markdown slide deck.
 
@@ -105,8 +112,7 @@ export async function ensurePresenterAgent(vault: string, model: string): Promis
 }
 
 export function generateSlidesFilename(question: string, date = new Date()): string {
-  const slug = slugify(question, 60);
-  return `${formatDate(date)}-${slug}.md`;
+  return generateAgentFilename(question, date);
 }
 
 export async function resolveSlidesOutputPath(
@@ -114,21 +120,7 @@ export async function resolveSlidesOutputPath(
   question: string,
   date = new Date(),
 ): Promise<{ filename: string; filePath: string }> {
-  const baseFilename = generateSlidesFilename(question, date);
-  const ext = ".md";
-  const stem = baseFilename.slice(0, -ext.length);
-
-  let filename = baseFilename;
-  let filePath = join(outputDir, filename);
-  let suffix = 2;
-
-  while (await fileExists(filePath)) {
-    filename = `${stem}-${suffix}${ext}`;
-    filePath = join(outputDir, filename);
-    suffix++;
-  }
-
-  return { filename, filePath };
+  return resolveAgentOutputPath(outputDir, question, date);
 }
 
 export function buildSlidesFrontmatter(
@@ -153,11 +145,6 @@ export function buildSlidesFrontmatter(
   });
 }
 
-/** Log to stderr, unless suppressed (--stdout mode) */
-function log(silent: boolean, ...args: unknown[]): void {
-  if (!silent) console.error(...args);
-}
-
 export async function run(args: string[], config: Config): Promise<void> {
   const { options, question } = parseSlidesArgs(args);
   const { vault } = config;
@@ -174,48 +161,15 @@ export async function run(args: string[], config: Config): Promise<void> {
 
   log(silent, "Generating slides...\n");
 
-  const systemPrompt = PRESENTER_SYSTEM_PROMPT.replace("{SLIDE_COUNT}", String(options.count));
-
-  const claudeBin = process.env.BRAIN_CLAUDE_BIN || "claude";
   const prompt = `${question}\n\nTarget slide count: ${options.count}`;
-  const claudeArgs = [
-    claudeBin,
-    "-p", prompt,
-    "--agent", "presenter",
-    "--permission-mode", "bypassPermissions",
-  ];
-
-  if (options.verbose) {
-    console.error(`> ${claudeArgs.join(" ")}`);
-  }
-
-  let result: Awaited<ReturnType<typeof spawnCapture>>;
-  try {
-    result = await spawnCapture(claudeArgs, {
-      cwd: vault,
-      stdoutMode: "pipe",
-      stderrMode: options.verbose ? "inherit" : "pipe",
-    });
-  } catch (err) {
-    die(
-      err instanceof Error && (err.message.includes("ENOENT") || err.message.includes("Executable not found"))
-        ? "Claude CLI not found. Install `claude` and ensure it is in PATH."
-        : `failed to start presenter agent: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  const { stdout: output, stderr: stderrOutput, exitCode } = result;
-
-  if (exitCode !== 0) {
-    if (stderrOutput && !silent) console.error(stderrOutput);
-    die(`slide generation failed (exit code ${exitCode})`);
-  }
-
-  const body = output.trim();
-
-  if (!body) {
-    die("agent returned empty response");
-  }
+  const body = await spawnClaude({
+    vault,
+    prompt,
+    agentName: "presenter",
+    verbose: options.verbose,
+    silent,
+    commandLabel: "slide generation",
+  });
 
   // --stdout: raw markdown only, zero stderr, no file written
   if (options.stdout) {

@@ -63,8 +63,9 @@ export async function run(args: string[], config: Config): Promise<void> {
     strict: false,
   });
 
+  const items = await gatherItems(config.vault);
+
   if (values.json) {
-    const items = await gatherItems(config.vault);
     console.log(JSON.stringify(items));
     return;
   }
@@ -72,37 +73,13 @@ export async function run(args: string[], config: Config): Promise<void> {
   let total = 0;
 
   for (const cat of CATEGORIES) {
-    const dir = join(config.vault, "raw", cat.dir);
-    const files: string[] = [];
+    const catItems = items.filter((i) => i.category === cat.label.toLowerCase());
+    if (catItems.length === 0) continue;
 
-    try {
-      for await (const path of globFiles("*.md", dir)) {
-        files.push(path);
-      }
-    } catch {
-      continue;
-    }
+    total += catItems.length;
+    console.log(`\n${cat.emoji} ${cat.label} (${catItems.length})`);
 
-    if (files.length === 0) continue;
-
-    files.sort();
-    const unprocessed: { file: string; title: string }[] = [];
-
-    for (const file of files) {
-      const content = await readTextFile(join(dir, file));
-      const parsed = parseFrontmatter(content);
-      const status = parsed?.frontmatter.status;
-      if (status === "processed") continue;
-      const title = parsed?.frontmatter.title || file.replace(/\.md$/, "");
-      unprocessed.push({ file, title });
-    }
-
-    if (unprocessed.length === 0) continue;
-
-    total += unprocessed.length;
-    console.log(`\n${cat.emoji} ${cat.label} (${unprocessed.length})`);
-
-    for (const { title } of unprocessed) {
+    for (const { title } of catItems) {
       const display =
         title.length > 60 ? title.slice(0, 57) + "..." : title;
       console.log(`  \u2022 ${display}`);

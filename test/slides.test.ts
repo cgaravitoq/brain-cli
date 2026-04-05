@@ -10,7 +10,7 @@ import {
   ensurePresenterAgent,
   run,
 } from "../src/commands/slides";
-import { extractSources, extractRelated, extractTitle } from "../src/commands/ask";
+import { extractSources, extractRelated, extractTitle } from "../src/commands/shared";
 
 let vault: TestVault;
 

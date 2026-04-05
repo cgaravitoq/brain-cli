@@ -247,9 +247,7 @@ export function buildCanvasJson(
 }
 
 function buildEdges(
-  vault: string,
   nodes: CanvasNode[],
-  nodesByDepth: Map<number, MatchedArticle[]>,
   stemMap: Map<string, string>,
   linkMap: Map<string, string[]>,
 ): CanvasEdge[] {
@@ -276,7 +274,6 @@ function buildEdges(
         const targetNodeId = pathToNodeId.get(resolvedPath);
         if (targetNodeId && targetNodeId !== node.id) {
           // Avoid duplicate edges
-          const edgeKey = `${node.id}->${targetNodeId}`;
           const exists = edges.some(
             (e) => e.fromNode === node.id && e.toNode === targetNodeId,
           );
@@ -344,7 +341,7 @@ export async function run(args: string[], config: Config): Promise<void> {
   const canvasNodes = layoutNodes(nodesByDepth);
 
   // Build edges
-  const canvasEdges = buildEdges(vault, canvasNodes, nodesByDepth, stemMap, linkMap);
+  const canvasEdges = buildEdges(canvasNodes, stemMap, linkMap);
 
   // Build canvas JSON
   const canvas = buildCanvasJson(canvasNodes, canvasEdges);
