@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import type { Config } from "../types";
-import { ValidationError } from "../errors";
+import { ValidationError, CLIError } from "../errors";
 import { checkLinks, fixBrokenLinks } from "../lint/links";
 import { checkFrontmatter } from "../lint/frontmatter";
 import { checkOrphans } from "../lint/orphans";
@@ -103,8 +103,8 @@ export async function run(args: string[], config: Config): Promise<void> {
     console.log(`\n${errors} error(s), ${warnings} warning(s)`);
   }
 
-  // Exit code: 1 if errors found
+  // Throw if errors found (caught at top-level with exit code 1)
   if (errors > 0) {
-    process.exit(1);
+    throw new CLIError(`lint found ${errors} error(s)`);
   }
 }

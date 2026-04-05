@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
-import { readTextFile, globFiles } from "../fs";
+import { readTextFile, writeTextFile, globFiles } from "../fs";
 import { join, dirname } from "node:path";
-import { writeFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { die } from "../errors";
 import type { Config } from "../types";
 
@@ -90,7 +90,7 @@ async function exportMarkdown(vault: string, outputDir: string | undefined, verb
     const content = await readTextFile(join(vault, path));
     const outPath = join(outputDir, path);
     await mkdir(dirname(outPath), { recursive: true });
-    await writeFile(outPath, content);
+    await writeTextFile(outPath, content);
     if (verbose) console.error(`  Exported: ${path}`);
   }
 
@@ -99,7 +99,7 @@ async function exportMarkdown(vault: string, outputDir: string | undefined, verb
     const content = await readTextFile(join(vault, path));
     const outPath = join(outputDir, path);
     await mkdir(dirname(outPath), { recursive: true });
-    await writeFile(outPath, content);
+    await writeTextFile(outPath, content);
     if (verbose) console.error(`  Exported: ${path}`);
   }
 

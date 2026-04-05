@@ -1,5 +1,3 @@
-import { spawn, spawnSync as nodeSpawnSync } from "node:child_process";
-
 export interface SpawnResult {
   exitCode: number;
   stdout: string;
@@ -24,32 +22,21 @@ export async function spawnCapture(
   const stdoutMode = options.stdoutMode ?? "pipe";
   const stderrMode = options.stderrMode ?? "pipe";
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, rest, {
-      cwd: options.cwd,
-      stdio: ["ignore", stdoutMode, stderrMode],
-    });
-
-    let stdoutData = "";
-    let stderrData = "";
-
-    if (stdoutMode === "pipe") {
-      proc.stdout?.on("data", (chunk: Buffer) => {
-        stdoutData += chunk.toString();
-      });
-    }
-
-    if (stderrMode === "pipe") {
-      proc.stderr?.on("data", (chunk: Buffer) => {
-        stderrData += chunk.toString();
-      });
-    }
-
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      resolve({ exitCode: code ?? 1, stdout: stdoutData, stderr: stderrData });
-    });
+  const proc = Bun.spawn([cmd, ...rest], {
+    cwd: options.cwd,
+    stdin: "ignore",
+    stdout: stdoutMode,
+    stderr: stderrMode,
   });
+
+  const [stdoutText, stderrText] = await Promise.all([
+    stdoutMode === "pipe" ? new Response(proc.stdout).text() : "",
+    stderrMode === "pipe" ? new Response(proc.stderr).text() : "",
+  ]);
+
+  const exitCode = await proc.exited;
+
+  return { exitCode, stdout: stdoutText, stderr: stderrText };
 }
 
 /**
@@ -59,8 +46,8 @@ export function spawnSyncInherited(args: string[]): { exitCode: number } {
   const [cmd, ...rest] = args;
   if (!cmd) throw new Error("No command provided");
 
-  const result = nodeSpawnSync(cmd, rest, { stdio: "inherit" });
-  return { exitCode: result.status ?? 1 };
+  const result = Bun.spawnSync([cmd, ...rest], { stdio: ["inherit", "inherit", "inherit"] });
+  return { exitCode: result.exitCode };
 }
 
 /**
@@ -73,9 +60,9 @@ export function spawnSyncCapture(args: string[]): {
   const [cmd, ...rest] = args;
   if (!cmd) throw new Error("No command provided");
 
-  const result = nodeSpawnSync(cmd, rest);
+  const result = Bun.spawnSync([cmd, ...rest]);
   return {
-    exitCode: result.status ?? 1,
-    stderr: result.stderr instanceof Buffer ? result.stderr : null,
+    exitCode: result.exitCode,
+    stderr: result.stderr.length > 0 ? Buffer.from(result.stderr) : null,
   };
 }
