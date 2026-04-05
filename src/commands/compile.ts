@@ -100,6 +100,7 @@ export interface CompileOptions {
   noPush: boolean;
   verbose: boolean;
   all: boolean;
+  watch: boolean;
 }
 
 export function parseCompileArgs(args: string[]): CompileOptions {
@@ -113,6 +114,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
       "no-push": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
+      watch: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -126,6 +128,7 @@ export function parseCompileArgs(args: string[]): CompileOptions {
     noPush: (values["no-push"] as boolean) ?? false,
     verbose: (values.verbose as boolean) ?? false,
     all: (values.all as boolean) ?? false,
+    watch: (values.watch as boolean) ?? false,
   };
 }
 
@@ -463,8 +466,7 @@ export function parseExtractionPlan(output: string): ExtractionPlan | null {
   }
 }
 
-export async function run(args: string[], config: Config): Promise<void> {
-  const options = parseCompileArgs(args);
+async function compileOnce(options: CompileOptions, config: Config): Promise<void> {
   const { vault } = config;
 
   const allFiles = await scanUnprocessed(vault);
@@ -649,4 +651,60 @@ export async function run(args: string[], config: Config): Promise<void> {
     }
     console.log("Pushed to remote.");
   }
+}
+
+async function runWatch(options: CompileOptions, config: Config): Promise<void> {
+  const { watch } = await import("node:fs/promises");
+  const rawDir = join(config.vault, "raw");
+
+  console.log("Watching for changes in raw/notes and raw/articles...");
+  console.log("Press Ctrl+C to stop.\n");
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let pending = false;
+
+  const triggerCompile = async () => {
+    if (pending) return;
+    pending = true;
+
+    // Wait for debounce to let file writes settle
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    console.log(`\n[${new Date().toISOString()}] Change detected, recompiling...`);
+
+    try {
+      await compileOnce(options, config);
+      console.log("Done.");
+    } catch (e) {
+      console.error(`Compile error: ${e}`);
+    }
+
+    pending = false;
+  };
+
+  const watcher = watch(rawDir, { recursive: true });
+
+  for await (const event of watcher) {
+    if (!event.filename) continue;
+    const filename = event.filename;
+    if (filename.startsWith("notes/") || filename.startsWith("articles/")) {
+      if (!debounceTimer) {
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          triggerCompile();
+        }, 2000);
+      }
+    }
+  }
+}
+
+export async function run(args: string[], config: Config): Promise<void> {
+  const options = parseCompileArgs(args);
+
+  if (options.watch) {
+    await runWatch(options, config);
+    return;
+  }
+
+  await compileOnce(options, config);
 }

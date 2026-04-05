@@ -48,6 +48,7 @@ describe("compile command", () => {
         noPush: false,
         verbose: false,
         all: false,
+        watch: false,
       });
     });
 
@@ -76,6 +77,11 @@ describe("compile command", () => {
       expect(opts.all).toBe(true);
     });
 
+    test("parses --watch", () => {
+      const opts = parseCompileArgs(["--watch"]);
+      expect(opts.watch).toBe(true);
+    });
+
     test("parses all flags together", () => {
       const opts = parseCompileArgs([
         "--dry-run",
@@ -83,6 +89,7 @@ describe("compile command", () => {
         "--no-push",
         "--verbose",
         "--all",
+        "--watch",
       ]);
       expect(opts).toEqual({
         dryRun: true,
@@ -92,6 +99,7 @@ describe("compile command", () => {
         noPush: true,
         verbose: true,
         all: true,
+        watch: true,
       });
     });
   });
