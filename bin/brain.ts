@@ -27,9 +27,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain report <topic>    Generate long-form report
        brain slides <topic>     Generate Marp slide deck
        brain chart <topic>      Generate chart with matplotlib
-       brain canvas <topic>     Generate Obsidian canvas`;
+       brain canvas <topic>     Generate Obsidian canvas
+       brain completions <sh>   Shell completions (bash/zsh/fish)`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "completions"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -58,6 +59,14 @@ async function main(): Promise<void> {
   }
 
   const subcommand = positionals[0];
+
+  // Completions: no config needed, handle early
+  if (subcommand === "completions") {
+    const { parseCompletionsArgs, run: completionsRun } = await import("../src/commands/completions");
+    const shell = parseCompletionsArgs(positionals.slice(1));
+    completionsRun(shell);
+    return;
+  }
 
   // Subcommand routing
   if (subcommand && KNOWN_COMMANDS.has(subcommand)) {
