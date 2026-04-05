@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
+import { buildFrontmatter } from "../frontmatter";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture } from "../spawn";
 import { ensureAgent, type AgentDefinition } from "../agents";
@@ -128,22 +129,14 @@ export function buildReportFrontmatter(
   related: string[],
   date: Date,
 ): string {
-  const esc = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  const lines = ["---"];
-  lines.push(`title: ${esc(title)}`);
-  lines.push("type: report");
-  lines.push(`topic: ${esc(topic)}`);
-  lines.push(`created: ${formatDate(date)}`);
-  if (sources.length > 0) {
-    lines.push("sources:");
-    for (const s of sources) lines.push(`  - ${esc(s)}`);
-  }
-  if (related.length > 0) {
-    lines.push("related:");
-    for (const r of related) lines.push(`  - ${esc(r)}`);
-  }
-  lines.push("---");
-  return lines.join("\n");
+  return buildFrontmatter({
+    title,
+    type: "report",
+    subject: { key: "topic", value: topic },
+    created: date,
+    sources: sources.length > 0 ? sources : undefined,
+    related: related.length > 0 ? related : undefined,
+  });
 }
 
 export function extractSources(body: string): string[] {

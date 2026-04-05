@@ -5,6 +5,7 @@ import type { Config } from "../types";
 import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
 import { extractSources, extractRelated, extractTitle, extractSummary } from "./ask";
+import { buildFrontmatter } from "../frontmatter";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture } from "../spawn";
 import { ensureAgent, type AgentDefinition } from "../agents";
@@ -134,25 +135,19 @@ export function buildSlidesFrontmatter(
   related: string[],
   date: Date,
 ): string {
-  const esc = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  const lines = ["---"];
-  lines.push("marp: true");
-  lines.push("theme: default");
-  lines.push("paginate: true");
-  lines.push(`title: ${esc(title)}`);
-  lines.push("type: slides");
-  lines.push(`question: ${esc(question)}`);
-  lines.push(`created: ${formatDate(date)}`);
-  if (sources.length > 0) {
-    lines.push("sources:");
-    for (const s of sources) lines.push(`  - ${esc(s)}`);
-  }
-  if (related.length > 0) {
-    lines.push("related:");
-    for (const r of related) lines.push(`  - ${esc(r)}`);
-  }
-  lines.push("---");
-  return lines.join("\n");
+  return buildFrontmatter({
+    prefix: [
+      { key: "marp", value: true },
+      { key: "theme", value: "default" },
+      { key: "paginate", value: true },
+    ],
+    title,
+    type: "slides",
+    subject: { key: "question", value: question },
+    created: date,
+    sources: sources.length > 0 ? sources : undefined,
+    related: related.length > 0 ? related : undefined,
+  });
 }
 
 /** Log to stderr, unless suppressed (--stdout mode) */

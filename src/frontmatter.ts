@@ -1,10 +1,77 @@
 import type { Frontmatter } from "./types";
+import { formatDate } from "./utils";
 
 function escapeYamlString(str: string): string {
   if (/[":{}[\],&*?|>!%#@`]/.test(str) || str.startsWith("'")) {
     return `"${str.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   }
   return `"${str}"`;
+}
+
+/** Always-quoting escape for build*Frontmatter output */
+function escapeQuotes(s: string): string {
+  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Ordered key-value pair for frontmatter fields that must appear
+ * before the standard title/type/created block (e.g. marp settings).
+ */
+export interface FrontmatterField {
+  key: string;
+  value: string | boolean | number;
+}
+
+export interface FrontmatterData {
+  /** Fields emitted before title (e.g. marp: true, theme: default) */
+  prefix?: FrontmatterField[];
+  title: string;
+  type: string;
+  /** Optional field emitted right after type (e.g. question, topic) */
+  subject?: { key: string; value: string };
+  created: Date;
+  sources?: string[];
+  related?: string[];
+}
+
+/**
+ * Build YAML frontmatter for output commands (ask, chart, report, slides).
+ * Produces output identical to the per-command build*Frontmatter functions.
+ */
+export function buildFrontmatter(data: FrontmatterData): string {
+  const lines: string[] = ["---"];
+
+  if (data.prefix) {
+    for (const { key, value } of data.prefix) {
+      if (typeof value === "string") {
+        lines.push(`${key}: ${value}`);
+      } else {
+        lines.push(`${key}: ${value}`);
+      }
+    }
+  }
+
+  lines.push(`title: ${escapeQuotes(data.title)}`);
+  lines.push(`type: ${data.type}`);
+
+  if (data.subject) {
+    lines.push(`${data.subject.key}: ${escapeQuotes(data.subject.value)}`);
+  }
+
+  lines.push(`created: ${formatDate(data.created)}`);
+
+  if (data.sources && data.sources.length > 0) {
+    lines.push("sources:");
+    for (const s of data.sources) lines.push(`  - ${escapeQuotes(s)}`);
+  }
+
+  if (data.related && data.related.length > 0) {
+    lines.push("related:");
+    for (const r of data.related) lines.push(`  - ${escapeQuotes(r)}`);
+  }
+
+  lines.push("---");
+  return lines.join("\n");
 }
 
 export function generateFrontmatter(fm: Frontmatter): string {
