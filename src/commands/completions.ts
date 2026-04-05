@@ -7,6 +7,7 @@ export const COMMANDS = [
   { name: "compile", flags: ["--dry-run", "--model", "--no-push", "--verbose", "--all"] },
   { name: "config", flags: [] },
   { name: "file", flags: ["--last", "--as"] },
+  { name: "init", flags: [] },
   { name: "lint", flags: ["--check", "--fix"] },
   { name: "list", flags: [] },
   { name: "log", flags: ["--all", "--verbose"] },
@@ -26,7 +27,7 @@ const BASH_COMPLETION = `_brain_completions() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
   
-  commands="ask chart clip compile config file lint list log mcp note pull push report search slides stats"
+  commands="ask chart clip compile config file init lint list log mcp note pull push report search slides stats"
   flags="--help --version"
   
   case "\${prev}" in
@@ -89,6 +90,7 @@ _brain_commands() {
     'compile:Compile raw notes to wiki'
     'config:Configure vault path'
     'file:File output back to raw'
+    'init:Create vault structure'
     'lint:Lint the vault'
     'list:List raw notes'
     'log:Show git log'
@@ -181,6 +183,7 @@ complete -c brain -n '__fish_use_subcommand' -a 'clip' -d 'Clip from URL'
 complete -c brain -n '__fish_use_subcommand' -a 'compile' -d 'Compile raw to wiki'
 complete -c brain -n '__fish_use_subcommand' -a 'config' -d 'Configure vault'
 complete -c brain -n '__fish_use_subcommand' -a 'file' -d 'File output to raw'
+complete -c brain -n '__fish_use_subcommand' -a 'init' -d 'Create vault structure'
 complete -c brain -n '__fish_use_subcommand' -a 'lint' -d 'Lint vault'
 complete -c brain -n '__fish_use_subcommand' -a 'list' -d 'List notes'
 complete -c brain -n '__fish_use_subcommand' -a 'log' -d 'Git log'

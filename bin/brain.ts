@@ -21,6 +21,7 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain push               Git add, commit & push
        brain pull               Git pull with rebase
        brain log                Show vault git log
+       brain init [path]        Create vault structure
        brain config [path]      View/set vault path
        brain mcp                MCP server (stdio)
        brain lint               Lint vault health
@@ -30,7 +31,7 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain canvas <topic>     Generate Obsidian canvas
        brain completions <sh>   Shell completions (bash/zsh/fish)`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "completions"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "completions", "init"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -65,6 +66,14 @@ async function main(): Promise<void> {
     const { parseCompletionsArgs, run: completionsRun } = await import("../src/commands/completions");
     const shell = parseCompletionsArgs(positionals.slice(1));
     completionsRun(shell);
+    return;
+  }
+
+  // Init: no config needed, handle early
+  if (subcommand === "init") {
+    const { parseInitArgs, run: initRun } = await import("../src/commands/init");
+    const { path } = parseInitArgs(positionals.slice(1));
+    await initRun({ path });
     return;
   }
 
