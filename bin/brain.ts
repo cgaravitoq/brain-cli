@@ -30,9 +30,10 @@ const USAGE = `Usage: brain <text>           Quick capture
        brain slides <topic>     Generate Marp slide deck
        brain chart <topic>      Generate chart with matplotlib
        brain canvas <topic>     Generate Obsidian canvas
+       brain export             Export vault content
        brain completions <sh>   Shell completions (bash/zsh/fish)`;
 
-const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "completions", "init"]);
+const KNOWN_COMMANDS = new Set(["clip", "list", "stats", "config", "search", "compile", "ask", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "export", "completions", "init"]);
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
       slides: () => import("../src/commands/slides").then((m) => m.run),
       chart: () => import("../src/commands/chart").then((m) => m.run),
       canvas: () => import("../src/commands/canvas").then((m) => m.run),
+      export: () => import("../src/commands/export").then((m) => m.run),
     };
 
     const handler = await commands[subcommand]!();
@@ -116,7 +118,7 @@ async function main(): Promise<void> {
         : await loadConfig();
 
     // Commands with custom flag parsing need raw args
-    const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "stats", "search", "list"]);
+    const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "export", "stats", "search", "list"]);
     await handler(rawArgCommands.has(subcommand) ? process.argv.slice(3) : subArgs, config);
     return;
   }

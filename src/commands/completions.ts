@@ -7,6 +7,7 @@ export const COMMANDS = [
   { name: "compile", flags: ["--dry-run", "--model", "--no-push", "--verbose", "--all"] },
   { name: "config", flags: [] },
   { name: "doctor", flags: [] },
+  { name: "export", flags: ["--format", "--output", "--verbose"] },
   { name: "file", flags: ["--last", "--as"] },
   { name: "init", flags: [] },
   { name: "lint", flags: ["--check", "--fix"] },
@@ -28,7 +29,7 @@ const BASH_COMPLETION = `_brain_completions() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
   
-  commands="ask chart clip compile config doctor file init lint list log mcp note pull push report search slides stats"
+  commands="ask chart clip compile config doctor export file init lint list log mcp note pull push report search slides stats"
   flags="--help --version"
   
   case "\${prev}" in
@@ -42,6 +43,10 @@ const BASH_COMPLETION = `_brain_completions() {
       ;;
     compile)
       COMPREPLY=($(compgen -W "\${flags} --model --no-push --all" -- "\${cur}"))
+      return 0
+      ;;
+    export)
+      COMPREPLY=($(compgen -W "\${flags} --format --output --verbose" -- "\${cur}"))
       return 0
       ;;
     search)
@@ -91,6 +96,7 @@ _brain_commands() {
     'compile:Compile raw notes to wiki'
     'config:Configure vault path'
     'doctor:Diagnose vault setup'
+    'export:Export vault content'
     'file:File output back to raw'
     'init:Create vault structure'
     'lint:Lint the vault'
@@ -133,6 +139,12 @@ _brain() {
         '(--no-push)--no-push[skip push]' \\
         '(-v --verbose)'{-v,--verbose}'[verbose]' \\
         '(-a --all)'{-a,--all}'[force all]'
+      ;;
+    export)
+      _arguments -s "\${opts[@]}" \\
+        '(-f --format)'{-f,--format}'[export format]:format:(json markdown)' \\
+        '(-o --output)'{-o,--output}'[output directory]:dir:_directories' \\
+        '(-v --verbose)'{-v,--verbose}'[verbose]'
       ;;
     search)
       _arguments -s "\${opts[@]}" \\
@@ -185,6 +197,7 @@ complete -c brain -n '__fish_use_subcommand' -a 'clip' -d 'Clip from URL'
 complete -c brain -n '__fish_use_subcommand' -a 'compile' -d 'Compile raw to wiki'
 complete -c brain -n '__fish_use_subcommand' -a 'config' -d 'Configure vault'
 complete -c brain -n '__fish_use_subcommand' -a 'doctor' -d 'Diagnose vault setup'
+complete -c brain -n '__fish_use_subcommand' -a 'export' -d 'Export vault content'
 complete -c brain -n '__fish_use_subcommand' -a 'file' -d 'File output to raw'
 complete -c brain -n '__fish_use_subcommand' -a 'init' -d 'Create vault structure'
 complete -c brain -n '__fish_use_subcommand' -a 'lint' -d 'Lint vault'
@@ -216,6 +229,11 @@ complete -c brain -n '__fish_seen_subcommand_from compile' -l model -s m -d 'Mod
 complete -c brain -n '__fish_seen_subcommand_from compile' -l no-push -d 'Skip push'
 complete -c brain -n '__fish_seen_subcommand_from compile' -l verbose -s v -d 'Verbose'
 complete -c brain -n '__fish_seen_subcommand_from compile' -l all -s a -d 'Force all'
+
+# export flags
+complete -c brain -n '__fish_seen_subcommand_from export' -l format -s f -d 'Export format' -r -a 'json markdown'
+complete -c brain -n '__fish_seen_subcommand_from export' -l output -s o -d 'Output directory' -r
+complete -c brain -n '__fish_seen_subcommand_from export' -l verbose -s v -d 'Verbose'
 
 # search flags
 complete -c brain -n '__fish_seen_subcommand_from search' -l tag -s t -d 'Filter by tag' -r
