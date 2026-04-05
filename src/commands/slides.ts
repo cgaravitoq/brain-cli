@@ -7,6 +7,7 @@ import { slugify, formatDate } from "../utils";
 import { extractSources, extractRelated, extractTitle, extractSummary } from "./ask";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture } from "../spawn";
+import { ensureAgent, type AgentDefinition } from "../agents";
 
 const PRESENTER_SYSTEM_PROMPT = `You are a presenter with read access to a Second Brain vault. Your job is to research a topic and produce a Marp-format markdown slide deck.
 
@@ -89,24 +90,14 @@ export function parseSlidesArgs(args: string[]): { options: SlidesOptions; quest
   };
 }
 
+const PRESENTER_AGENT: AgentDefinition = {
+  name: "presenter",
+  systemPrompt: PRESENTER_SYSTEM_PROMPT,
+  tools: ["Read", "Glob", "Grep"],
+};
+
 export async function ensurePresenterAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "presenter.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Glob
-  - Grep
----
-
-${PRESENTER_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, PRESENTER_AGENT, model);
 }
 
 export function generateSlidesFilename(question: string, date = new Date()): string {

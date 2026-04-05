@@ -6,6 +6,7 @@ import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture } from "../spawn";
+import { ensureAgent, type AgentDefinition } from "../agents";
 
 const RESEARCHER_SYSTEM_PROMPT = `You are a researcher with read access to a Second Brain vault. Your job is to research questions by navigating the wiki and raw materials, then produce a comprehensive markdown answer.
 
@@ -79,24 +80,14 @@ export function parseAskArgs(args: string[]): { options: AskOptions; question: s
   };
 }
 
+const RESEARCHER_AGENT: AgentDefinition = {
+  name: "researcher",
+  systemPrompt: RESEARCHER_SYSTEM_PROMPT,
+  tools: ["Read", "Glob", "Grep"],
+};
+
 export async function ensureResearcherAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "researcher.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Glob
-  - Grep
----
-
-${RESEARCHER_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, RESEARCHER_AGENT, model);
 }
 
 export function generateAskFilename(question: string, date = new Date()): string {

@@ -1,6 +1,5 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
 import type { Config } from "../types";
 import { die } from "../errors";
 import { parseFrontmatter } from "../frontmatter";
@@ -15,8 +14,9 @@ import {
   computeFileHash,
   type CompileManifest,
 } from "../compile/manifest";
-import { readTextFile, writeTextFile, globFiles } from "../fs";
+import { readTextFile, globFiles } from "../fs";
 import { spawnCapture } from "../spawn";
+import { ensureAgent, type AgentDefinition } from "../agents";
 
 const COMPILER_SYSTEM_PROMPT = `You are a Second Brain compiler. Your job is to transform raw notes and articles into polished wiki articles.
 
@@ -189,26 +189,14 @@ export async function scanWikiInventory(vault: string): Promise<WikiArticle[]> {
   return articles;
 }
 
+const COMPILER_AGENT: AgentDefinition = {
+  name: "compiler",
+  systemPrompt: COMPILER_SYSTEM_PROMPT,
+  tools: ["Read", "Write", "Edit", "Glob", "Grep"],
+};
+
 export async function ensureCompilerAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "compiler.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
----
-
-${COMPILER_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, COMPILER_AGENT, model);
 }
 
 const EXTRACTOR_SYSTEM_PROMPT = `You are a Second Brain extraction agent. Your job is to analyze raw notes and articles and produce a structured extraction plan as JSON.
@@ -241,23 +229,14 @@ Output ONLY valid JSON (no markdown fences, no commentary):
   ]
 }`;
 
+const EXTRACTOR_AGENT: AgentDefinition = {
+  name: "extractor",
+  systemPrompt: EXTRACTOR_SYSTEM_PROMPT,
+  tools: ["Read", "Glob"],
+};
+
 export async function ensureExtractorAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "extractor.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Glob
----
-
-${EXTRACTOR_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, EXTRACTOR_AGENT, model);
 }
 
 export function buildExtractionPrompt(files: UnprocessedFile[], wikiArticles: WikiArticle[]): string {

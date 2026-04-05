@@ -7,6 +7,7 @@ import { slugify, formatDate } from "../utils";
 import { extractSources, extractRelated, extractTitle } from "./ask";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture, spawnSyncCapture } from "../spawn";
+import { ensureAgent, type AgentDefinition } from "../agents";
 
 const CHARTIST_SYSTEM_PROMPT = `You are a data visualization specialist with read access to a Second Brain vault. Your job is to research the vault and produce a chart specification as structured JSON.
 
@@ -97,24 +98,14 @@ export function parseChartArgs(args: string[]): { options: ChartOptions; questio
   };
 }
 
+const CHARTIST_AGENT: AgentDefinition = {
+  name: "chartist",
+  systemPrompt: CHARTIST_SYSTEM_PROMPT,
+  tools: ["Read", "Glob", "Grep"],
+};
+
 export async function ensureChartistAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "chartist.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Glob
-  - Grep
----
-
-${CHARTIST_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, CHARTIST_AGENT, model);
 }
 
 export function generateChartFilename(question: string, date = new Date()): string {

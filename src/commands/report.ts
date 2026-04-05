@@ -6,6 +6,7 @@ import { die } from "../errors";
 import { slugify, formatDate } from "../utils";
 import { writeTextFile, fileExists } from "../fs";
 import { spawnCapture } from "../spawn";
+import { ensureAgent, type AgentDefinition } from "../agents";
 
 const REPORTER_SYSTEM_PROMPT = `You are a report writer with read access to a Second Brain vault. Your job is to research a topic thoroughly and produce a long-form structured document (2000-5000 words).
 
@@ -83,24 +84,14 @@ export function parseReportArgs(args: string[]): { options: ReportOptions; topic
   };
 }
 
+const REPORTER_AGENT: AgentDefinition = {
+  name: "reporter",
+  systemPrompt: REPORTER_SYSTEM_PROMPT,
+  tools: ["Read", "Glob", "Grep"],
+};
+
 export async function ensureReporterAgent(vault: string, model: string): Promise<string> {
-  const agentDir = join(vault, ".claude", "agents");
-  const agentPath = join(agentDir, "reporter.md");
-
-  const content = `---
-model: ${model}
-tools:
-  - Read
-  - Glob
-  - Grep
----
-
-${REPORTER_SYSTEM_PROMPT}`;
-
-  await mkdir(agentDir, { recursive: true });
-  await writeTextFile(agentPath, content);
-
-  return agentPath;
+  return ensureAgent(vault, REPORTER_AGENT, model);
 }
 
 export function generateReportFilename(topic: string, date = new Date()): string {
