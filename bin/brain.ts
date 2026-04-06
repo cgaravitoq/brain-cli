@@ -140,6 +140,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Reject unknown single-word commands that look like subcommands
+  if (
+    positionals.length === 1 &&
+    !values.title &&
+    /^[a-z][a-z0-9-]*$/i.test(positionals[0]) &&
+    positionals[0].length <= 20
+  ) {
+    console.error(`brain: unknown command '${positionals[0]}'`);
+    console.error(`  hint: run 'brain --help' to see available commands`);
+    process.exit(2);
+  }
+
   // Default: note command
   const config = await loadConfig();
 
