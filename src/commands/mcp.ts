@@ -4,6 +4,12 @@ import type { Config } from "../types";
 import { parseFrontmatter } from "../frontmatter";
 import { readTextFile, fileExists, globFiles } from "../fs";
 import { searchVault } from "./search";
+import { gatherStats } from "./stats";
+import { gatherItems } from "./list";
+import { checkLinks, fixBrokenLinks } from "../lint/links";
+import { checkFrontmatter } from "../lint/frontmatter";
+import { checkOrphans } from "../lint/orphans";
+import { checkStale } from "../lint/stale";
 import { getToolDefinitions } from "../mcp/tools";
 import {
   type JsonRpcResponse,
@@ -57,7 +63,7 @@ export async function handleMessage(
       return makeResponse(id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "brain-mcp", version: "1.0.0" },
+        serverInfo: { name: "brain-mcp", version: "2.0.0" },
       });
 
     case "tools/list":
@@ -90,10 +96,18 @@ async function handleToolCall(
       return handleReadArticle(id, toolArgs, config);
     case "list_concepts":
       return handleListConcepts(id, config);
+    case "vault_stats":
+      return handleVaultStats(id, config);
+    case "list_unprocessed":
+      return handleListUnprocessed(id, config);
+    case "vault_lint":
+      return handleVaultLint(id, toolArgs, config);
     default:
       return makeError(id, METHOD_NOT_FOUND, `Unknown tool: ${toolName}`);
   }
 }
+
+// ── Existing tools ──────────────────────────────────────────────
 
 async function handleSearchWiki(
   id: number | string,
@@ -154,6 +168,103 @@ async function handleListConcepts(
   }
 
   const text = JSON.stringify(concepts, null, 2);
+  return makeResponse(id, {
+    content: [{ type: "text", text }],
+  });
+}
+
+// ── New maintenance tools ───────────────────────────────────────
+
+async function handleVaultStats(
+  id: number | string,
+  config: Config,
+): Promise<JsonRpcResponse> {
+  const stats = await gatherStats(config.vault);
+  const text = JSON.stringify(
+    {
+      wiki: stats.wikiCount,
+      raw: stats.rawCount,
+      processed: stats.processedCount,
+      unprocessed: stats.unprocessedCount,
+    },
+    null,
+    2,
+  );
+  return makeResponse(id, {
+    content: [{ type: "text", text }],
+  });
+}
+
+async function handleListUnprocessed(
+  id: number | string,
+  config: Config,
+): Promise<JsonRpcResponse> {
+  const items = await gatherItems(config.vault);
+  const text = JSON.stringify(items, null, 2);
+  return makeResponse(id, {
+    content: [{ type: "text", text }],
+  });
+}
+
+async function handleVaultLint(
+  id: number | string,
+  args: Record<string, unknown>,
+  config: Config,
+): Promise<JsonRpcResponse> {
+  const checkName = args.check as string | undefined;
+  const validChecks = new Set(["links", "frontmatter", "orphans", "stale"]);
+
+  if (checkName && !validChecks.has(checkName)) {
+    return makeError(
+      id,
+      INVALID_PARAMS,
+      `Unknown check: ${checkName}. Valid: ${[...validChecks].join(", ")}`,
+    );
+  }
+
+  const runAll = !checkName;
+
+  const result: {
+    links?: { count: number; issues: Array<{ file: string; link: string; line: number }>; fixed?: number };
+    frontmatter?: { count: number; issues: Array<{ file: string; missing: string[] }> };
+    orphans?: { count: number; issues: Array<{ file: string }> };
+    stale?: { count: number; issues: Array<{ file: string; age: number }> };
+    totalErrors: number;
+    totalWarnings: number;
+  } = { totalErrors: 0, totalWarnings: 0 };
+
+  if (runAll || checkName === "links") {
+    const issues = await checkLinks(config.vault);
+    const fix = args.fix === true;
+
+    if (fix && issues.length > 0) {
+      const fixed = await fixBrokenLinks(config.vault, issues);
+      result.links = { count: issues.length, issues, fixed };
+    } else {
+      result.links = { count: issues.length, issues };
+    }
+    result.totalErrors += issues.length;
+  }
+
+  if (runAll || checkName === "frontmatter") {
+    const issues = await checkFrontmatter(config.vault);
+    result.frontmatter = { count: issues.length, issues };
+    result.totalErrors += issues.length;
+  }
+
+  if (runAll || checkName === "orphans") {
+    const issues = await checkOrphans(config.vault);
+    result.orphans = { count: issues.length, issues };
+    result.totalWarnings += issues.length;
+  }
+
+  if (runAll || checkName === "stale") {
+    const issues = await checkStale(config.vault);
+    result.stale = { count: issues.length, issues };
+    result.totalWarnings += issues.length;
+  }
+
+  const text = JSON.stringify(result, null, 2);
   return makeResponse(id, {
     content: [{ type: "text", text }],
   });

@@ -37,7 +37,7 @@ describe("MCP server", () => {
 
       const serverInfo = result.serverInfo as Record<string, unknown>;
       expect(serverInfo.name).toBe("brain-mcp");
-      expect(serverInfo.version).toBe("1.0.0");
+      expect(serverInfo.version).toBe("2.0.0");
     });
 
     test("notifications (no id) return null", async () => {
@@ -82,7 +82,7 @@ describe("MCP server", () => {
   });
 
   describe("tools/list", () => {
-    test("returns all 3 tools with correct names", async () => {
+    test("returns all 7 tools with correct names", async () => {
       const req = JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -94,10 +94,17 @@ describe("MCP server", () => {
       expect(res!.error).toBeUndefined();
 
       const result = res!.result as { tools: Array<{ name: string }> };
-      expect(result.tools).toHaveLength(3);
+      expect(result.tools).toHaveLength(6);
 
       const names = result.tools.map((t) => t.name).sort();
-      expect(names).toEqual(["list_concepts", "read_article", "search_wiki"]);
+      expect(names).toEqual([
+        "list_concepts",
+        "list_unprocessed",
+        "read_article",
+        "search_wiki",
+        "vault_lint",
+        "vault_stats",
+      ]);
     });
 
     test("tools have input schemas", async () => {
@@ -352,6 +359,167 @@ describe("MCP server", () => {
       }>;
       expect(data).toHaveLength(1);
       expect(data[0]!.title).toBe("wiki/no-fm.md");
+    });
+  });
+
+  describe("vault_stats tool", () => {
+    test("returns vault statistics", async () => {
+      await Bun.write(
+        join(vault.config.vault, "wiki", "concept.md"),
+        "---\ntitle: \"Test\"\ncreated: 2026-04-03\ntags: [wiki]\n---\n\nContent\n",
+      );
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "note.md"),
+        "---\ntitle: \"Note\"\ncreated: 2026-04-03\ntags: [note]\nstatus: processed\n---\n\nContent\n",
+      );
+
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_stats", arguments: {} },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.wiki).toBe(1);
+      expect(data.raw).toBe(1);
+      expect(data.processed).toBe(1);
+      expect(data.unprocessed).toBe(0);
+    });
+  });
+
+  describe("list_unprocessed tool", () => {
+    test("returns unprocessed files only", async () => {
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "done.md"),
+        "---\ntitle: \"Done\"\ncreated: 2026-04-03\ntags: [note]\nstatus: processed\n---\n\nContent\n",
+      );
+      await Bun.write(
+        join(vault.config.vault, "raw", "notes", "pending.md"),
+        "---\ntitle: \"Pending\"\ncreated: 2026-04-03\ntags: [note]\n---\n\nContent\n",
+      );
+
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "list_unprocessed", arguments: {} },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data).toHaveLength(1);
+      expect(data[0].title).toBe("Pending");
+    });
+  });
+
+  describe("vault_lint tool", () => {
+    test("detects broken links", async () => {
+      await Bun.write(
+        join(vault.config.vault, "wiki", "test.md"),
+        "---\ntitle: \"Test\"\ncreated: 2026-04-03\ntags: [wiki]\n---\n\nSee [[nonexistent-concept]]\n",
+      );
+
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_lint", arguments: { check: "links" } },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.links.count).toBeGreaterThan(0);
+      expect(data.links.issues[0].link).toBe("nonexistent-concept");
+    });
+
+    test("detects missing frontmatter", async () => {
+      await Bun.write(
+        join(vault.config.vault, "wiki", "no-fm.md"),
+        "Just content without frontmatter\n",
+      );
+
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_lint", arguments: { check: "frontmatter" } },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.frontmatter.count).toBeGreaterThan(0);
+    });
+
+    test("runs all checks when no check specified", async () => {
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_lint", arguments: {} },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data).toHaveProperty("links");
+      expect(data).toHaveProperty("frontmatter");
+      expect(data).toHaveProperty("orphans");
+      expect(data).toHaveProperty("stale");
+      expect(typeof data.totalErrors).toBe("number");
+      expect(typeof data.totalWarnings).toBe("number");
+    });
+
+    test("rejects invalid check name", async () => {
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_lint", arguments: { check: "invalid" } },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeDefined();
+      expect(res!.error!.code).toBe(-32602);
+    });
+  });
+
+  describe("vault_lint with fix", () => {
+    test("fixes broken links when fix=true", async () => {
+      await Bun.write(
+        join(vault.config.vault, "wiki", "test.md"),
+        "---\ntitle: \"Test\"\ncreated: 2026-04-03\ntags: [wiki]\n---\n\nSee [[broken-link]] and [[broken|display text]]\n",
+      );
+
+      const req = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "vault_lint", arguments: { check: "links", fix: true } },
+      });
+
+      const res = await handleMessage(req, vault.config);
+      expect(res!.error).toBeUndefined();
+
+      const result = res!.result as { content: Array<{ type: string; text: string }> };
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.links.fixed).toBeGreaterThan(0);
+      expect(data.links.count).toBeGreaterThan(0);
     });
   });
 

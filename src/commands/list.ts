@@ -15,13 +15,13 @@ const CATEGORIES: Category[] = [
   { label: "Articles", emoji: "\u{1F4C2}", dir: "articles" },
 ];
 
-interface ListItem {
+export interface ListItem {
   category: string;
   file: string;
   title: string;
 }
 
-async function gatherItems(vault: string): Promise<ListItem[]> {
+export async function gatherItems(vault: string): Promise<ListItem[]> {
   const items: ListItem[] = [];
 
   for (const cat of CATEGORIES) {

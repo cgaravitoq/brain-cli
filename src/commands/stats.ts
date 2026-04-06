@@ -30,14 +30,14 @@ async function countUnprocessed(dir: string): Promise<number> {
   return count;
 }
 
-interface VaultStats {
+export interface VaultStats {
   wikiCount: number;
   rawCount: number;
   processedCount: number;
   unprocessedCount: number;
 }
 
-async function gatherStats(vault: string): Promise<VaultStats> {
+export async function gatherStats(vault: string): Promise<VaultStats> {
   const wikiCount = await countFiles(join(vault, "wiki"));
   const rawCount = await countFiles(join(vault, "raw"));
   const unprocessedCount = await countUnprocessed(join(vault, "raw"));

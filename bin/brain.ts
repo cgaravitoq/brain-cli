@@ -119,10 +119,20 @@ async function main(): Promise<void> {
     };
 
     const handler = await commands[subcommand]!();
-    const config =
-      subcommand === "config"
-        ? (await loadStoredConfig()) ?? { vault: "" }
-        : await loadConfig();
+    let config;
+    if (subcommand === "config") {
+      config = (await loadStoredConfig()) ?? { vault: "" };
+    } else if (subcommand === "mcp") {
+      // MCP must never prompt on stdout — stdin/stdout are the JSON-RPC transport
+      const stored = await loadStoredConfig();
+      if (!stored) {
+        console.error("brain: no vault configured. Run: brain config <path>");
+        process.exit(1);
+      }
+      config = stored;
+    } else {
+      config = await loadConfig();
+    }
 
     // Commands with custom flag parsing need raw args
     const rawArgCommands = new Set(["compile", "ask", "clip", "file", "push", "pull", "log", "mcp", "lint", "report", "slides", "chart", "canvas", "export", "stats", "search", "list"]);
