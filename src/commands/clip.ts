@@ -5,6 +5,7 @@ import type { Config } from "../types";
 import { generateFilename, formatDate } from "../utils";
 import { generateFrontmatter } from "../frontmatter";
 import { htmlToMarkdown, extractTitle } from "../html";
+import { extractArticle } from "../readability";
 import { ValidationError, FileSystemError } from "../errors";
 import { writeTextFile } from "../fs";
 
@@ -13,15 +14,17 @@ export async function run(args: string[], config: Config): Promise<void> {
     args,
     options: {
       "dry-run": { type: "boolean", default: false },
+      raw: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
   });
 
   const dryRun = (values["dry-run"] as boolean) ?? false;
+  const useRaw = (values["raw"] as boolean) ?? false;
   const url = positionals[0];
   if (!url) {
-    throw new ValidationError("Usage: brain clip <url>", "brain clip https://example.com/article", 2);
+    throw new ValidationError("Usage: brain clip <url> [--raw]", "brain clip https://example.com/article", 2);
   }
 
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -57,8 +60,23 @@ export async function run(args: string[], config: Config): Promise<void> {
     );
   }
 
-  const pageTitle = extractTitle(html) || titleFromUrl(url);
-  const markdown = htmlToMarkdown(html);
+  let pageTitle: string;
+  let markdown: string;
+  let author: string | undefined;
+  let site: string | undefined;
+  let excerpt: string | undefined;
+
+  const article = useRaw ? null : extractArticle(html, url);
+  if (article) {
+    pageTitle = article.title || extractTitle(html) || titleFromUrl(url);
+    markdown = htmlToMarkdown(article.content);
+    author = article.byline?.trim() || undefined;
+    site = article.siteName?.trim() || undefined;
+    excerpt = article.excerpt?.trim() || undefined;
+  } else {
+    pageTitle = extractTitle(html) || titleFromUrl(url);
+    markdown = htmlToMarkdown(html);
+  }
 
   const now = new Date();
   const filename = generateFilename(pageTitle, now);
@@ -72,6 +90,9 @@ export async function run(args: string[], config: Config): Promise<void> {
     created: formatDate(now),
     tags: ["raw", "unprocessed"],
     source: url,
+    author,
+    site,
+    excerpt,
   });
 
   await writeTextFile(filepath, `${frontmatter}\n\n${markdown}\n`);

@@ -10,7 +10,7 @@ There is no persistent `SPEC.md` in this repo. Use `README.md` for the current C
 
 - **Runtime:** Bun (not Node, not npm)
 - **Language:** TypeScript, strict mode
-- **Zero dependencies** — Bun built-ins only. No commander, no yargs, no chalk.
+- **Minimal dependencies** — prefer Bun built-ins. Third-party deps are allowed only when pure-JS, lightweight, no native binaries, no postinstall scripts, and they provide capability that would be infeasible to reimplement (e.g. Readability for main-content extraction, Turndown for HTML→markdown, linkedom for a lightweight DOM). No commander, no yargs, no chalk.
 - **Binary name:** `brain`
 - **Package name:** `brain-cli`
 - **Test with:** `bun test`
@@ -36,7 +36,8 @@ src/
   config.ts               # XDG-compliant config load/save (BRAIN_CONFIG_DIR for tests)
   frontmatter.ts          # Generate/parse YAML frontmatter
   utils.ts                # slugify, generateFilename, expandHome, formatDate/Time
-  html.ts                 # Regex HTML-to-markdown converter (for clip)
+  html.ts                 # HTML→markdown via Turndown + linkedom (for clip)
+  readability.ts          # Mozilla Readability main-content extraction (for clip)
   fs.ts                   # Bun-native file I/O: readTextFile, writeTextFile, fileExists, globFiles
   spawn.ts                # Bun.spawn/spawnSync wrappers: spawnCapture, spawnSyncInherited, spawnSyncCapture
   git.ts                  # Git helpers: runGit, isGitRepo, getChangedFiles, parseGitStatusPaths

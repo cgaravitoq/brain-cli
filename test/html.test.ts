@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { htmlToMarkdown, extractTitle } from "../src/html";
+import { extractArticle } from "../src/readability";
 
 describe("extractTitle", () => {
   test("extracts title from HTML", () => {
@@ -102,5 +103,51 @@ describe("htmlToMarkdown", () => {
     const html = "<body><p>One</p><p></p><p></p><p>Two</p></body>";
     const md = htmlToMarkdown(html);
     expect(md).not.toMatch(/\n{4,}/);
+  });
+
+  test("converts images", () => {
+    const html = '<body><p><img src="https://x.test/a.png" alt="Alt text"></p></body>';
+    const md = htmlToMarkdown(html);
+    expect(md).toContain("![Alt text](https://x.test/a.png)");
+  });
+
+  test("converts GFM tables", () => {
+    const html =
+      "<body><table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></body>";
+    const md = htmlToMarkdown(html);
+    expect(md).toContain("| A");
+    expect(md).toContain("| 1");
+  });
+
+  test("converts nested and ordered lists", () => {
+    const html =
+      "<body><ol><li>One<ul><li>sub</li></ul></li><li>Two</li></ol></body>";
+    const md = htmlToMarkdown(html);
+    expect(md).toContain("1. One");
+    expect(md).toContain("2. Two");
+    expect(md).toMatch(/- sub/);
+  });
+});
+
+describe("extractArticle (Readability)", () => {
+  test("extracts main content, title, and byline from an article page", () => {
+    const html = `<!doctype html><html><head><title>The Headline</title></head>
+      <body>
+        <nav>Home | About | Contact</nav>
+        <header><h1>Site Name</h1></header>
+        <article>
+          <h1>The Headline</h1>
+          <p class="byline">By Jane Doe</p>
+          <p>${"This is a reasonably long first paragraph that should be picked up by Readability because it has enough text density to be considered actual article content and not a navigation snippet or sidebar fragment that would otherwise be discarded. ".repeat(3)}</p>
+          <p>${"A second paragraph keeps the scoring confident — Readability likes multiple paragraphs with substantive prose rather than link-heavy boilerplate that sits in sidebars. ".repeat(3)}</p>
+        </article>
+        <aside>Unrelated sidebar garbage that should not appear.</aside>
+        <footer>Copyright junk</footer>
+      </body></html>`;
+    const result = extractArticle(html, "https://example.com/post");
+    expect(result).not.toBeNull();
+    expect(result!.title).toContain("Headline");
+    expect(result!.content).toContain("first paragraph");
+    expect(result!.content).not.toContain("sidebar garbage");
   });
 });

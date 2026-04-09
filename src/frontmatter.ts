@@ -78,6 +78,15 @@ export function generateFrontmatter(fm: Frontmatter): string {
   if (fm.source) {
     lines.push(`source: ${escapeYamlString(fm.source)}`);
   }
+  if (fm.author) {
+    lines.push(`author: ${escapeYamlString(fm.author)}`);
+  }
+  if (fm.site) {
+    lines.push(`site: ${escapeYamlString(fm.site)}`);
+  }
+  if (fm.excerpt) {
+    lines.push(`excerpt: ${escapeYamlString(fm.excerpt)}`);
+  }
   lines.push("---");
   return lines.join("\n");
 }

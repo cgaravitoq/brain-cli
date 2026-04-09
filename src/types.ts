@@ -15,6 +15,9 @@ export interface Frontmatter {
   created: string; // YYYY-MM-DD
   tags: string[];
   source?: string; // URL, only for clip command
+  author?: string; // byline, only for clip command
+  site?: string; // siteName, only for clip command
+  excerpt?: string; // short description, only for clip command
 }
 
 /** A command handler function */
