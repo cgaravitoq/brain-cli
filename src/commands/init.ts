@@ -49,7 +49,7 @@ This is your Second Brain wiki index.
 
 ## Getting Started
 
-1. Add notes: \`brain note "My thought"\`
+1. Add notes: \`brain "My thought"\`
 2. Clip content: \`brain clip <url>\`
 3. Compile: \`brain compile\`
 4. Search: \`brain search <query>\`

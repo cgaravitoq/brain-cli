@@ -4,7 +4,7 @@ export const COMMANDS = [
   { name: "ask",     desc: "Query the wiki with a question",   usage: "brain ask <question>",  flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--dry-run      Show what would be created"] },
   { name: "canvas",  desc: "Generate Obsidian canvas",         usage: "brain canvas <topic>",   flags: ["--depth <n>    Link traversal depth (default: 1)"] },
   { name: "chart",   desc: "Generate chart with matplotlib",   usage: "brain chart <topic>",    flags: ["-p, --print    Print to stdout", "--stdout       Raw stdout only (no stderr)", "--model <m>    Model to use (default: sonnet)", "--verbose      Show agent stderr", "--dry-run      Show what would be created"] },
-  { name: "clip",    desc: "Save article from URL",            usage: "brain clip <url>",       flags: ["--dry-run      Show what would be saved"] },
+  { name: "clip",    desc: "Save article from URL",            usage: "brain clip <url>",       flags: ["--raw          Skip Readability, convert full HTML", "--dry-run      Show what would be saved"] },
   { name: "compile", desc: "Compile raw material into wiki",   usage: "brain compile",          flags: ["--dry-run      Preview files to compile", "--model <m>    Model for both phases (default: sonnet)", "--extract-model <m>  Model for extraction phase", "--write-model <m>    Model for writing phase", "--no-push      Skip git push after compile", "--verbose      Show agent stderr", "--all          Recompile all (ignore manifest)", "--watch        Watch for changes and recompile", "--concurrency <n>    Parallel jobs (default: 4)"] },
   { name: "config",  desc: "View or set vault path",           usage: "brain config [path]",    flags: [] },
   { name: "doctor",  desc: "Diagnose vault setup",             usage: "brain doctor",           flags: [] },
@@ -93,7 +93,7 @@ const BASH_COMPLETION = `_brain_completions() {
       return 0
       ;;
     clip)
-      COMPREPLY=($(compgen -W "\${flags} --dry-run" -- "\${cur}"))
+      COMPREPLY=($(compgen -W "\${flags} --raw --dry-run" -- "\${cur}"))
       return 0
       ;;
     log)
@@ -209,6 +209,7 @@ _brain() {
       ;;
     clip)
       _arguments -s "\${opts[@]}" \\
+        '(--raw)--raw[skip Readability]' \\
         '(--dry-run)--dry-run[dry run]'
       ;;
     log)
@@ -305,6 +306,7 @@ complete -c brain -n '__fish_seen_subcommand_from lint' -l check -s c -d 'Check 
 complete -c brain -n '__fish_seen_subcommand_from lint' -l fix -s f -d 'Fix issues'
 
 # clip flags
+complete -c brain -n '__fish_seen_subcommand_from clip' -l raw -d 'Skip Readability'
 complete -c brain -n '__fish_seen_subcommand_from clip' -l dry-run -d 'Dry run'
 
 # log flags

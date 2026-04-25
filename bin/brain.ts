@@ -9,7 +9,7 @@ import type { CommandHandler } from "../src/types";
 const USAGE = `Usage: brain <text>           Quick capture
        brain -t "Title" <text> Note with title
        brain -e                 Open editor
-       brain clip <url>         Save article
+       brain clip <url>         Save article (--raw, --dry-run)
        brain list               List unprocessed
        brain stats              Vault stats
        brain search <query>     Search vault
@@ -141,13 +141,15 @@ async function main(): Promise<void> {
   }
 
   // Reject unknown single-word commands that look like subcommands
+  const firstPositional = positionals[0];
   if (
+    firstPositional &&
     positionals.length === 1 &&
     !values.title &&
-    /^[a-z][a-z0-9-]*$/i.test(positionals[0]) &&
-    positionals[0].length <= 20
+    /^[a-z][a-z0-9-]*$/i.test(firstPositional) &&
+    firstPositional.length <= 20
   ) {
-    console.error(`brain: unknown command '${positionals[0]}'`);
+    console.error(`brain: unknown command '${firstPositional}'`);
     console.error(`  hint: run 'brain --help' to see available commands`);
     process.exit(2);
   }
