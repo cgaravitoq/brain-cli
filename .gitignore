@@ -1,6 +1,9 @@
 # dependencies (bun install)
 node_modules
 
+# npm artifacts (this repo is Bun-only — see AGENTS.md)
+package-lock.json
+
 # output
 out
 dist

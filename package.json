@@ -1,10 +1,16 @@
 {
   "name": "brain-cli",
   "version": "0.1.0",
+  "description": "CLI for capturing, querying, and compiling knowledge in an LLM-maintained Obsidian wiki vault",
   "type": "module",
   "bin": {
     "brain": "bin/brain.ts"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cgaravitoq/brain-cli.git"
+  },
+  "license": "MIT",
   "scripts": {
     "dev": "bun run bin/brain.ts",
     "test": "bun test",
