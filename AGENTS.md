@@ -4,13 +4,13 @@
 
 This is `brain-cli` — a CLI tool for capturing, querying, and compiling knowledge inside a Second Brain Obsidian vault.
 
-There is no persistent `SPEC.md` in this repo. Use `README.md` for the current CLI surface and `prd.md` for the `ask` / `file` product details when those commands are in scope.
+There is no persistent `SPEC.md` in this repo. Use `README.md` for the current CLI surface.
 
 ## Rules
 
 - **Runtime:** Bun (not Node, not npm)
 - **Language:** TypeScript, strict mode
-- **Minimal dependencies** — prefer Bun built-ins. Third-party deps are allowed only when pure-JS, lightweight, no native binaries, no postinstall scripts, and they provide capability that would be infeasible to reimplement (e.g. Readability for main-content extraction, Turndown for HTML→markdown, linkedom for a lightweight DOM). No commander, no yargs, no chalk.
+- **Minimal dependencies** — prefer Bun built-ins. Third-party deps are allowed only when pure-JS, lightweight, no native binaries, no postinstall scripts, and they provide capability that would be infeasible to reimplement (e.g. Readability for main-content extraction, Turndown — with `turndown-plugin-gfm` for GFM tables/strikethrough — for HTML→markdown, linkedom for a lightweight DOM). No commander, no yargs, no chalk.
 - **Binary name:** `brain`
 - **Package name:** `brain-cli`
 - **Test with:** `bun test`

@@ -1,8 +1,10 @@
 # brain-cli 🧠
 
-CLI for your [Second Brain](https://github.com/cgaravitoq/second-brain) vault. Capture notes, clip articles, query your wiki, and compile raw material into a structured wiki via Claude.
+CLI for an LLM-maintained Obsidian wiki vault. Capture notes, clip articles, query your wiki, and compile raw material into structured pages via Claude.
 
-Zero runtime dependencies -- built entirely on Bun-native APIs.
+Designed to pair with the [obsidian-wiki-template](https://github.com/cgaravitoq/obsidian-wiki-template) — a public starter vault for LLM knowledge bases (following Karpathy's [LLM Knowledge Bases](https://x.com/karpathy/status/2039805659525644595) pattern).
+
+Built on Bun-native APIs with a small set of pure-JS dependencies (`@mozilla/readability`, `turndown`, `linkedom`) used only by `brain clip` for HTML→markdown conversion.
 
 ## Requirements
 
@@ -54,7 +56,7 @@ brain completions <sh>   Shell completions (bash/zsh/fish)
 - `brain <text>` -- create a note in `raw/notes/`
 - `brain -t "Title" <text>` -- note with an explicit title
 - `brain -e` -- open `$EDITOR` for longer notes
-- `brain clip <url>` -- fetch a page, convert to markdown, store in `raw/articles/`
+- `brain clip <url>` -- fetch a page, extract main content with Readability, convert to markdown, store in `raw/articles/` (`--raw` to skip Readability and convert the full HTML, `--dry-run`). Frontmatter includes `title`, `created`, `tags`, `source` URL, and — when extracted — `author`, `site`, `excerpt`.
 
 **Query**
 
@@ -77,7 +79,7 @@ brain completions <sh>   Shell completions (bash/zsh/fish)
 - `brain file` -- move an output back into `raw/` (`--last` for most recent, `--as note|article`)
 - `brain push` -- git add, commit, and push vault changes (`-m "msg"`, `--dry-run`)
 - `brain pull` -- git pull with rebase
-- `brain export` -- export vault content (`--format json|markdown`, `--output`)
+- `brain export` -- export vault content (`--format json|markdown`, `--output`, `--verbose`)
 
 **Setup**
 
@@ -85,7 +87,7 @@ brain completions <sh>   Shell completions (bash/zsh/fish)
 - `brain init [path]` -- scaffold a new vault directory
 - `brain doctor` -- diagnose vault configuration issues
 - `brain lint` -- check vault health (`--check links|frontmatter|orphans|stale`, `--fix`)
-- `brain mcp` -- start an MCP server over stdio
+- `brain mcp` -- start an MCP server over stdio. Exposes tools: `search_wiki`, `read_article`, `list_concepts`, `vault_stats`, `list_unprocessed`, `vault_lint`.
 - `brain completions <bash|zsh|fish>` -- emit shell completions
 
 ## Config
