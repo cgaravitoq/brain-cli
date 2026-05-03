@@ -56,7 +56,34 @@ brain completions <sh>   Shell completions (bash/zsh/fish)
 - `brain <text>` -- create a note in `raw/notes/`
 - `brain -t "Title" <text>` -- note with an explicit title
 - `brain -e` -- open `$EDITOR` for longer notes
-- `brain clip <url>` -- fetch a page, extract main content with Readability, convert to markdown, store in `raw/articles/` (`--raw` to skip Readability and convert the full HTML, `--dry-run`). Frontmatter includes `title`, `created`, `tags`, `source` URL, and — when extracted — `author`, `site`, `excerpt`.
+- `brain clip <url>` -- fetch a page, extract main content, convert to markdown, store in `raw/articles/` (`--raw` to skip Readability and convert the full HTML, `--dry-run`). Frontmatter includes `title`, `created`, `tags`, `source` URL, and — when extracted — `author`, `site`, `excerpt`.
+
+  `clip` dispatches to one of several **extractors** based on the URL:
+
+  | Extractor | Used for |
+  |---|---|
+  | `reddit` | `*.reddit.com/r/.../comments/...` — uses Reddit's `.json` endpoint to capture post + top-level comments |
+  | `twitter-syndication` | `x.com` / `twitter.com` `/status/...` — uses the public `cdn.syndication.twimg.com` endpoint (works for tweets and threads' focal post; long-form X Articles need an external extractor) |
+  | `default` | Everything else — HTTP fetch + Mozilla Readability + Turndown |
+  | `raw` | Forced via `--raw` — skips Readability, converts full HTML |
+
+  **External extractors** (for sites that block plain HTTP — X Articles, LinkedIn, Medium paywalls, anti-bot-protected Reddit). Add a per-domain command to `~/.config/brain/config.json`:
+
+  ```json
+  {
+    "vault": "~/Developer/personal/brain",
+    "extractors": {
+      "x.com":         "my-x-extractor",
+      "linkedin.com":  ["my-helper", "--mode=article"]
+    }
+  }
+  ```
+
+  The command is invoked with the URL as its final positional argument and is expected to print to stdout either:
+  - JSON `{ "title": string, "content": string, "author"?, "site"?, "excerpt"? }`, or
+  - Raw markdown (the first H1 / first non-empty line becomes the title).
+
+  Non-zero exit → `brain clip` reports the error. External extractors **always win** over built-ins; built-ins fall back to `default` on transient failures, but extractors that emit a "do-not-fall-back" signal (e.g. X Article detected) surface the error directly so you know to register an external extractor.
 
 **Query**
 
