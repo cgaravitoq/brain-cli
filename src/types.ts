@@ -1,12 +1,17 @@
+import type { ExternalExtractorMap } from "./extractors/external";
+
 /** Persisted config from ~/.config/brain/config.json */
 export interface Config {
   /** Absolute path to the vault (~ already expanded) */
   vault: string;
+  /** Optional per-domain external extractor commands. */
+  extractors?: ExternalExtractorMap;
 }
 
 /** Raw config as stored on disk (vault may contain ~) */
 export interface RawConfig {
   vault: string;
+  extractors?: ExternalExtractorMap;
 }
 
 /** Frontmatter fields for a note */

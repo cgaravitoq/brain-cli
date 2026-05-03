@@ -32,7 +32,10 @@ export async function loadStoredConfig(): Promise<Config | null> {
     );
   }
 
-  return { vault: expandHome(raw.vault) };
+  return {
+    vault: expandHome(raw.vault),
+    extractors: raw.extractors,
+  };
 }
 
 export async function loadConfig(): Promise<Config> {
@@ -47,7 +50,19 @@ export async function loadConfig(): Promise<Config> {
 export async function saveConfig(vault: string): Promise<void> {
   const configPath = getConfigPath();
   await mkdir(getConfigDir(), { recursive: true });
-  const raw: RawConfig = { vault };
+
+  // Preserve any existing extractor config when only updating the vault.
+  let extractors: RawConfig["extractors"];
+  if (await fileExists(configPath)) {
+    try {
+      const prev: RawConfig = JSON.parse(await readTextFile(configPath));
+      extractors = prev.extractors;
+    } catch {
+      // ignore unreadable previous config
+    }
+  }
+
+  const raw: RawConfig = extractors ? { vault, extractors } : { vault };
   await writeTextFile(configPath, JSON.stringify(raw, null, 2) + "\n");
 }
 
