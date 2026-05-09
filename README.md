@@ -14,11 +14,18 @@ Built on Bun-native APIs with a small set of pure-JS dependencies (`@mozilla/rea
 ## Install
 
 ```bash
-git clone https://github.com/cgaravitoq/brain-cli.git
-cd brain-cli
-bun install
-bun link
+bun install --global brain-cli
 ```
+
+Make sure `~/.bun/bin` is in your `PATH`:
+
+| Shell | Config file | Line to add |
+|---|---|---|
+| bash | `~/.bashrc` | `export PATH="$HOME/.bun/bin:$PATH"` |
+| zsh | `~/.zshrc` | `export PATH="$HOME/.bun/bin:$PATH"` |
+| fish | `~/.config/fish/config.fish` | `fish_add_path $HOME/.bun/bin` |
+
+After installing, run `brain completions <bash\|zsh\|fish>` to set up shell completions.
 
 ## Usage
 
